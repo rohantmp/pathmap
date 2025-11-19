@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PathMap - GPX Track Mapping</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>PathMap</h1>
+                <div class="session-controls">
+                    <button id="download-session" class="btn btn-secondary" title="Download Session">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M8 12L3 7h3V1h4v6h3L8 12z"/>
+                            <path d="M14 14H2v1h12v-1z"/>
+                        </svg>
+                    </button>
+                    <button id="upload-session" class="btn btn-secondary" title="Upload Session">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M8 4L13 9h-3v6H6V9H3L8 4z"/>
+                            <path d="M14 2H2v1h12V2z"/>
+                        </svg>
+                    </button>
+                    <input type="file" id="session-file-input" accept=".json" style="display: none;">
+                </div>
+            </div>
+
+            <div class="controls">
+                <button id="create-polygon" class="btn btn-primary">+ New Polygon</button>
+                <label class="toggle-control">
+                    <input type="checkbox" id="toggle-tracks">
+                    <span>Show GPX Tracks</span>
+                </label>
+            </div>
+
+            <div class="polygons-list" id="polygons-list">
+                <p class="empty-state">No polygons yet. Create one to get started!</p>
+            </div>
+        </aside>
+
+        <main class="map-container">
+            <div id="map"></div>
+        </main>
+    </div>
+
+    <script type="module" src="/main.js"></script>
+</body>
+</html>
