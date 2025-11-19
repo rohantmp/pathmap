@@ -7,18 +7,16 @@ export class MapManager {
         this.map = L.map(elementId, {
             center: [0, 0],
             zoom: 2,
-            zoomControl: true
+            zoomControl: true,
+            maxZoom: 22
         });
 
-        // Add OpenStreetMap satellite layer
+        // Add Esri satellite layer with tile scaling beyond native zoom
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
             attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-            maxZoom: 18,
+            maxZoom: 22,
             maxNativeZoom: 18
         }).addTo(this.map);
-
-        // Allow zooming beyond tile max zoom
-        this.map.setMaxZoom(22);
 
         this.polygonLayers = new Map(); // polygonId -> layer group
         this.trackLayers = new Map(); // polygonId -> array of track layers
@@ -45,7 +43,7 @@ export class MapManager {
     /**
      * Add or update a polygon on the map
      */
-    addPolygon(polygonId, hull, color) {
+    addPolygon(polygonId, hull, color, name = '') {
         // Remove existing layers for this polygon
         this.removePolygon(polygonId);
 
@@ -57,7 +55,8 @@ export class MapManager {
         this.polygonData.set(polygonId, {
             id: polygonId,
             hull: hull,
-            color: color
+            color: color,
+            name: name
         });
 
         // Create layer group for this polygon

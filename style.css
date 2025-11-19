@@ -230,6 +230,82 @@ body {
     padding-top: 0.5rem;
 }
 
+/* Settings Panel */
+.settings-panel {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fa;
+}
+
+.settings-panel h3 {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    color: #2c3e50;
+}
+
+.setting-group {
+    margin-bottom: 0.75rem;
+}
+
+.setting-group label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: #2c3e50;
+    margin-bottom: 0.25rem;
+}
+
+.setting-group input[type="range"] {
+    flex: 1;
+    margin: 0 0.5rem;
+}
+
+.setting-group span {
+    min-width: 40px;
+    text-align: right;
+    font-weight: 600;
+    color: #3498db;
+}
+
+/* Equalizer Container */
+.equalizer-container {
+    display: flex;
+    justify-content: space-around;
+    align-items: flex-end;
+    padding: 0.5rem;
+    background: #ecf0f1;
+    border-radius: 6px;
+    height: 140px;
+}
+
+.eq-band {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.eq-slider {
+    writing-mode: bt-lr; /* IE */
+    -webkit-appearance: slider-vertical;
+    width: 20px;
+    height: 80px;
+    cursor: pointer;
+}
+
+.eq-label {
+    font-size: 0.65rem;
+    color: #7f8c8d;
+    text-transform: uppercase;
+}
+
+.eq-value {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #3498db;
+}
+
 /* Empty States */
 .empty-state {
     text-align: center;
@@ -261,6 +337,7 @@ body {
     background: transparent;
     border: none;
     z-index: 1000 !important;
+    cursor: move !important;
 }
 
 .label-content {
@@ -273,8 +350,40 @@ body {
     white-space: nowrap;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
     border: 1px solid rgba(0, 0, 0, 0.15);
-    pointer-events: none;
+    pointer-events: auto;
     font-family: 'Courier New', monospace;
+    cursor: move;
+    transition: box-shadow 0.2s;
+}
+
+.label-content:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+}
+
+.label-content:active {
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+    background: rgba(255, 255, 255, 1);
+}
+
+/* Polygon Name Labels */
+.polygon-name-label {
+    background: transparent;
+    border: none;
+    z-index: 500 !important;
+}
+
+.polygon-name-content {
+    font-size: 1rem;
+    font-weight: 700;
+    text-align: center;
+    white-space: nowrap;
+    text-shadow:
+        -1px -1px 0 #fff,
+        1px -1px 0 #fff,
+        -1px 1px 0 #fff,
+        1px 1px 0 #fff,
+        0 0 8px rgba(255, 255, 255, 0.8);
+    pointer-events: none;
 }
 
 /* Leader lines (created by LabelManager) */

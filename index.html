@@ -35,6 +35,45 @@
                     <input type="checkbox" id="toggle-tracks">
                     <span>Show GPX Tracks</span>
                 </label>
+                <label class="toggle-control">
+                    <input type="checkbox" id="toggle-debug-fields">
+                    <span>Show Repulsion Fields</span>
+                </label>
+                <button id="toggle-settings" class="btn btn-secondary">Label Settings</button>
+            </div>
+
+            <div class="settings-panel" id="settings-panel" style="display: none;">
+                <h3>Label Settings</h3>
+
+                <div class="setting-group">
+                    <label>Min Vertex Distance (px)
+                        <input type="range" id="min-vertex-dist" min="10" max="100" value="30" step="5" class="live-setting">
+                        <span id="min-vertex-dist-value">30</span>
+                    </label>
+                </div>
+
+                <div class="setting-group">
+                    <label>Max Label Distance (px)
+                        <input type="range" id="max-label-distance" min="30" max="200" value="80" step="10" class="live-setting">
+                        <span id="max-label-distance-value">80</span>
+                    </label>
+                </div>
+
+                <div class="setting-group">
+                    <label>Min Vertex Angle (degrees)
+                        <input type="range" id="min-vertex-angle" min="0" max="45" value="10" step="5" class="live-setting">
+                        <span id="min-vertex-angle-value">10</span>
+                    </label>
+                </div>
+
+                <div class="setting-group">
+                    <label>Iterations
+                        <input type="range" id="iterations" min="50" max="500" value="200" step="50" class="live-setting">
+                        <span id="iterations-value">200</span>
+                    </label>
+                </div>
+
+                <button id="reset-settings" class="btn btn-secondary" style="width: 100%; margin-top: 0.5rem;">Reset to Defaults</button>
             </div>
 
             <div class="polygons-list" id="polygons-list">

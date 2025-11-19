@@ -42,13 +42,75 @@ function init() {
     // Set up event listeners
     document.getElementById('create-polygon').addEventListener('click', createPolygon);
     document.getElementById('toggle-tracks').addEventListener('change', handleToggleTracks);
+    document.getElementById('toggle-debug-fields').addEventListener('change', handleToggleDebugFields);
     document.getElementById('download-session').addEventListener('click', handleDownloadSession);
     document.getElementById('upload-session').addEventListener('click', () => {
         document.getElementById('session-file-input').click();
     });
     document.getElementById('session-file-input').addEventListener('change', handleUploadSession);
+    document.getElementById('toggle-settings').addEventListener('click', toggleSettings);
+
+    // Set up settings panel sliders
+    setupSettingsSliders();
 
     renderPolygonList();
+}
+
+function toggleSettings() {
+    const panel = document.getElementById('settings-panel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function setupSettingsSliders() {
+    const sliders = [
+        { id: 'min-vertex-dist', valueId: 'min-vertex-dist-value', format: v => v },
+        { id: 'max-label-distance', valueId: 'max-label-distance-value', format: v => v },
+        { id: 'min-vertex-angle', valueId: 'min-vertex-angle-value', format: v => v },
+        { id: 'iterations', valueId: 'iterations-value', format: v => v }
+    ];
+
+    sliders.forEach(({ id, valueId, format }) => {
+        const slider = document.getElementById(id);
+        const valueDisplay = document.getElementById(valueId);
+        slider.addEventListener('input', (e) => {
+            valueDisplay.textContent = format(parseFloat(e.target.value));
+            // Live update on any slider change
+            applyLabelSettingsLive();
+        });
+    });
+
+    // Reset button
+    document.getElementById('reset-settings').addEventListener('click', resetSettings);
+}
+
+function applyLabelSettingsLive() {
+    const settings = {
+        minVertexDistance: parseFloat(document.getElementById('min-vertex-dist').value),
+        maxLabelDistance: parseFloat(document.getElementById('max-label-distance').value),
+        minVertexAngle: parseFloat(document.getElementById('min-vertex-angle').value),
+        iterations: parseInt(document.getElementById('iterations').value)
+    };
+
+    mapManager.labelManager.updateSettings(settings);
+    mapManager.refreshAllLabels();
+}
+
+function resetSettings() {
+    // Reset to defaults
+    document.getElementById('min-vertex-dist').value = 30;
+    document.getElementById('min-vertex-dist-value').textContent = '30';
+    document.getElementById('max-label-distance').value = 80;
+    document.getElementById('max-label-distance-value').textContent = '80';
+    document.getElementById('min-vertex-angle').value = 10;
+    document.getElementById('min-vertex-angle-value').textContent = '10';
+    document.getElementById('iterations').value = 200;
+    document.getElementById('iterations-value').textContent = '200';
+
+    applyLabelSettingsLive();
+}
+
+function applyLabelSettings() {
+    applyLabelSettingsLive();
 }
 
 function createPolygon() {
@@ -163,7 +225,7 @@ function updatePolygonHull(polygon) {
 
 function updatePolygonOnMap(polygon) {
     if (polygon.hull && polygon.hull.length >= 3) {
-        mapManager.addPolygon(polygon.id, polygon.hull, polygon.color);
+        mapManager.addPolygon(polygon.id, polygon.hull, polygon.color, polygon.name);
 
         if (mapManager.showTracks) {
             mapManager.addTracks(polygon.id, polygon.tracks, polygon.color);
@@ -185,6 +247,11 @@ function handleToggleTracks(event) {
             mapManager.removeTracks(polygon.id);
         }
     });
+}
+
+function handleToggleDebugFields(event) {
+    const showDebug = event.target.checked;
+    mapManager.labelManager.toggleDebugFields(showDebug);
 }
 
 function renderPolygonList() {
