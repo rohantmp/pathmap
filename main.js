@@ -1,13 +1,19 @@
+import 'leaflet/dist/leaflet.css';
 import { MapManager } from './map-manager.js';
 import { parseGPXFile, getGPXName } from './gpx-parser.js';
 import { mergeConvexHulls } from './convex-hull.js';
 import { saveToLocalStorage, loadFromLocalStorage, downloadSession, uploadSession } from './storage.js';
+import { exportPNG, exportKML, exportGeoJSON, exportTracksGeoJSON } from './export.js';
 
 // Application state
 let state = {
-    polygons: [], // { id, name, color, tracks: [{ name, points }], hull }
+    polygons: [], // { id, name, color, tracks: [{ name, points }], hull, group }
+    groups: [], // { id, name, polygonIds: [] }
     nextPolygonId: 1,
-    mapState: null
+    nextGroupId: 1,
+    mapState: null,
+    focusedPolygonId: null, // null = show all, id = show only this polygon
+    focusedGroupId: null // null = show all, id = show only polygons in this group
 };
 
 let mapManager;
@@ -35,12 +41,26 @@ function init() {
     const savedState = loadFromLocalStorage();
     if (savedState) {
         state = savedState;
+        // Ensure groups array exists for backwards compatibility
+        if (!state.groups) {
+            state.groups = [];
+        }
+        if (!state.nextGroupId) {
+            state.nextGroupId = 1;
+        }
+        if (state.focusedPolygonId === undefined) {
+            state.focusedPolygonId = null;
+        }
+        if (state.focusedGroupId === undefined) {
+            state.focusedGroupId = null;
+        }
         colorIndex = state.polygons.length;
         restoreState();
     }
 
     // Set up event listeners
     document.getElementById('create-polygon').addEventListener('click', createPolygon);
+    document.getElementById('create-group').addEventListener('click', createGroup);
     document.getElementById('toggle-tracks').addEventListener('change', handleToggleTracks);
     document.getElementById('toggle-debug-fields').addEventListener('change', handleToggleDebugFields);
     document.getElementById('download-session').addEventListener('click', handleDownloadSession);
@@ -49,11 +69,66 @@ function init() {
     });
     document.getElementById('session-file-input').addEventListener('change', handleUploadSession);
     document.getElementById('toggle-settings').addEventListener('click', toggleSettings);
+    document.getElementById('toggle-export').addEventListener('click', toggleExport);
+    document.getElementById('export-png').addEventListener('click', handleExportPNG);
+    document.getElementById('export-kml').addEventListener('click', handleExportKML);
+    document.getElementById('export-geojson').addEventListener('click', handleExportGeoJSON);
+    document.getElementById('export-tracks-geojson').addEventListener('click', handleExportTracksGeoJSON);
 
     // Set up settings panel sliders
     setupSettingsSliders();
 
     renderPolygonList();
+}
+
+function toggleExport() {
+    const panel = document.getElementById('export-panel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+async function handleExportPNG() {
+    try {
+        const mapElement = document.getElementById('map');
+        await exportPNG(mapElement);
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+function handleExportKML() {
+    const polygonsToExport = getPolygonsToExport();
+    if (polygonsToExport.length === 0) {
+        alert('No polygons to export.');
+        return;
+    }
+    exportKML(polygonsToExport);
+}
+
+function handleExportGeoJSON() {
+    const polygonsToExport = getPolygonsToExport();
+    if (polygonsToExport.length === 0) {
+        alert('No polygons to export.');
+        return;
+    }
+    exportGeoJSON(polygonsToExport);
+}
+
+function handleExportTracksGeoJSON() {
+    const polygonsToExport = getPolygonsToExport();
+    if (polygonsToExport.length === 0) {
+        alert('No polygons to export.');
+        return;
+    }
+    exportTracksGeoJSON(polygonsToExport);
+}
+
+function getPolygonsToExport() {
+    // If a polygon is focused, export only that one
+    if (state.focusedPolygonId !== null) {
+        return state.polygons.filter(p => p.id === state.focusedPolygonId);
+    }
+    // Otherwise export all
+    return state.polygons;
 }
 
 function toggleSettings() {
@@ -119,10 +194,104 @@ function createPolygon() {
         name: `Polygon ${state.polygons.length + 1}`,
         color: getNextColor(),
         tracks: [],
-        hull: null
+        hull: null,
+        groupId: null,
+        hidden: false
     };
 
     state.polygons.push(polygon);
+    renderPolygonList();
+    saveState();
+}
+
+function createGroup() {
+    const group = {
+        id: state.nextGroupId++,
+        name: `Group ${state.groups.length + 1}`,
+        collapsed: false,
+        hidden: false
+    };
+
+    state.groups.push(group);
+    renderPolygonList();
+    saveState();
+}
+
+function toggleHidePolygon(polygonId) {
+    const polygon = state.polygons.find(p => p.id === polygonId);
+    if (polygon) {
+        polygon.hidden = !polygon.hidden;
+        updateMapVisibility();
+        renderPolygonList();
+        saveState();
+    }
+}
+
+function toggleHideGroup(groupId) {
+    const group = state.groups.find(g => g.id === groupId);
+    if (group) {
+        group.hidden = !group.hidden;
+        updateMapVisibility();
+        renderPolygonList();
+        saveState();
+    }
+}
+
+function deleteGroup(groupId) {
+    if (!confirm('Delete this group? Polygons will be ungrouped but not deleted.')) {
+        return;
+    }
+
+    // Ungroup all polygons in this group
+    state.polygons.forEach(p => {
+        if (p.groupId === groupId) {
+            p.groupId = null;
+        }
+    });
+
+    state.groups = state.groups.filter(g => g.id !== groupId);
+    renderPolygonList();
+    saveState();
+}
+
+function renameGroup(groupId, newName) {
+    const group = state.groups.find(g => g.id === groupId);
+    if (group) {
+        group.name = newName;
+        renderPolygonList();
+        saveState();
+    }
+}
+
+function toggleGroupCollapse(groupId) {
+    const group = state.groups.find(g => g.id === groupId);
+    if (group) {
+        group.collapsed = !group.collapsed;
+        renderPolygonList();
+        saveState();
+    }
+}
+
+function assignPolygonToGroup(polygonId, groupId) {
+    const polygon = state.polygons.find(p => p.id === polygonId);
+    if (polygon) {
+        polygon.groupId = groupId || null;
+        renderPolygonList();
+        saveState();
+    }
+}
+
+function toggleFocusGroup(groupId) {
+    if (state.focusedGroupId === groupId) {
+        // Unfocus - show all
+        state.focusedGroupId = null;
+    } else {
+        // Focus on this group
+        state.focusedGroupId = groupId;
+        state.focusedPolygonId = null; // Clear polygon focus when focusing group
+    }
+
+    updateMapVisibility();
     renderPolygonList();
     saveState();
 }
@@ -133,9 +302,62 @@ function deletePolygon(polygonId) {
     }
 
     state.polygons = state.polygons.filter(p => p.id !== polygonId);
+    if (state.focusedPolygonId === polygonId) {
+        state.focusedPolygonId = null;
+    }
     mapManager.removePolygon(polygonId);
     renderPolygonList();
     saveState();
+}
+
+function toggleFocusPolygon(polygonId) {
+    if (state.focusedPolygonId === polygonId) {
+        // Unfocus - show all polygons
+        state.focusedPolygonId = null;
+    } else {
+        // Focus on this polygon
+        state.focusedPolygonId = polygonId;
+        state.focusedGroupId = null; // Clear group focus when focusing polygon
+    }
+
+    // Update map to show/hide polygons
+    updateMapVisibility();
+    renderPolygonList();
+    saveState();
+}
+
+function updateMapVisibility() {
+    state.polygons.forEach(polygon => {
+        let shouldShow = true;
+
+        // Check if polygon is hidden
+        if (polygon.hidden) {
+            shouldShow = false;
+        }
+        // Check if polygon's group is hidden
+        else if (polygon.groupId) {
+            const group = state.groups.find(g => g.id === polygon.groupId);
+            if (group && group.hidden) {
+                shouldShow = false;
+            }
+        }
+
+        // Check polygon focus
+        if (shouldShow && state.focusedPolygonId !== null) {
+            shouldShow = state.focusedPolygonId === polygon.id;
+        }
+        // Check group focus
+        else if (shouldShow && state.focusedGroupId !== null) {
+            shouldShow = polygon.groupId === state.focusedGroupId;
+        }
+
+        if (shouldShow) {
+            updatePolygonOnMap(polygon);
+        } else {
+            mapManager.removePolygon(polygon.id);
+        }
+    });
+    mapManager.refreshAllLabels();
 }
 
 function updatePolygonColor(polygonId, color) {
@@ -257,55 +479,132 @@ function handleToggleDebugFields(event) {
 function renderPolygonList() {
     const container = document.getElementById('polygons-list');
 
-    if (state.polygons.length === 0) {
+    if (state.polygons.length === 0 && state.groups.length === 0) {
         container.innerHTML = '<p class="empty-state">No polygons yet. Create one to get started!</p>';
         return;
     }
 
-    container.innerHTML = state.polygons.map(polygon => `
-        <div class="polygon-card" data-polygon-id="${polygon.id}">
-            <div class="polygon-header">
-                <input type="text" class="polygon-name" value="${polygon.name}"
-                       onchange="window.renamePolygon(${polygon.id}, this.value)">
-                <input type="color" class="polygon-color" value="${polygon.color}"
-                       onchange="window.updatePolygonColor(${polygon.id}, this.value)">
-                <button class="btn-icon btn-delete" onclick="window.deletePolygon(${polygon.id})" title="Delete Polygon">
+    let html = '';
+
+    // Render groups first
+    state.groups.forEach(group => {
+        const groupPolygons = state.polygons.filter(p => p.groupId === group.id);
+        const isGroupFocused = state.focusedGroupId === group.id;
+        const isGroupDimmed = (state.focusedGroupId !== null && state.focusedGroupId !== group.id) || group.hidden;
+        html += `
+        <div class="group-card ${isGroupDimmed ? 'group-hidden' : ''}" data-group-id="${group.id}">
+            <div class="group-header">
+                <button class="btn-icon btn-collapse" onclick="window.toggleGroupCollapse(${group.id})" title="${group.collapsed ? 'Expand' : 'Collapse'}">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="transform: rotate(${group.collapsed ? '-90deg' : '0'})">
+                        <path d="M4.5 5.5L8 9l3.5-3.5"/>
+                    </svg>
+                </button>
+                <input type="text" class="group-name" value="${group.name}"
+                       onchange="window.renameGroup(${group.id}, this.value)">
+                <span class="group-count">(${groupPolygons.length})</span>
+                <button class="btn-icon ${group.hidden ? 'btn-hidden-active' : ''}" onclick="window.toggleHideGroup(${group.id})" title="${group.hidden ? 'Show' : 'Hide'}">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        ${group.hidden ?
+                            '<path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/><path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.299l.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/><path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709z"/><path d="M13.646 14.354l-12-12 .708-.708 12 12-.708.708z"/>'
+                            : '<path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/><path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8zm8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/>'}
+                    </svg>
+                </button>
+                <button class="btn-icon ${isGroupFocused ? 'btn-focused' : ''}" onclick="window.toggleFocusGroup(${group.id})" title="${isGroupFocused ? 'Show All' : 'Focus Group'}">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        <circle cx="8" cy="8" r="3"/>
+                        <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM2 8a6 6 0 1 1 12 0A6 6 0 0 1 2 8z"/>
+                    </svg>
+                </button>
+                <button class="btn-icon btn-delete" onclick="window.deleteGroup(${group.id})" title="Delete Group">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                         <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
                         <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
                     </svg>
                 </button>
             </div>
-            <div class="polygon-body">
-                <div class="tracks-list">
-                    ${polygon.tracks.length === 0 ? '<p class="empty-state-small">No tracks yet</p>' : ''}
-                    ${polygon.tracks.map(track => `
-                        <div class="track-item">
-                            <span class="track-name" title="${track.name}">${track.name}</span>
-                            <div class="track-actions">
-                                <select class="track-move-select" onchange="window.handleMoveTrack(${track.id}, ${polygon.id}, this)">
-                                    <option value="">Move to...</option>
-                                    ${state.polygons.filter(p => p.id !== polygon.id).map(p =>
-                                        `<option value="${p.id}">${p.name}</option>`
-                                    ).join('')}
-                                </select>
-                                <button class="btn-icon btn-delete-small" onclick="window.deleteTrack(${polygon.id}, ${track.id})" title="Delete Track">
-                                    ×
-                                </button>
-                            </div>
+            ${!group.collapsed ? `
+                <div class="group-polygons">
+                    ${groupPolygons.map(polygon => renderPolygonCard(polygon, true)).join('')}
+                </div>
+            ` : ''}
+        </div>
+        `;
+    });
+
+    // Render ungrouped polygons
+    const ungroupedPolygons = state.polygons.filter(p => !p.groupId);
+    html += ungroupedPolygons.map(polygon => renderPolygonCard(polygon, false)).join('');
+
+    container.innerHTML = html;
+}
+
+function renderPolygonCard(polygon, inGroup) {
+    const isFocused = state.focusedPolygonId === polygon.id;
+    const isDimmed = (state.focusedPolygonId !== null && state.focusedPolygonId !== polygon.id) || polygon.hidden;
+
+    return `
+    <div class="polygon-card ${isDimmed ? 'polygon-hidden' : ''} ${inGroup ? 'in-group' : ''}" data-polygon-id="${polygon.id}">
+        <div class="polygon-header">
+            <input type="text" class="polygon-name" value="${polygon.name}"
+                   onchange="window.renamePolygon(${polygon.id}, this.value)">
+            <input type="color" class="polygon-color" value="${polygon.color}"
+                   onchange="window.updatePolygonColor(${polygon.id}, this.value)">
+            <select class="polygon-group-select" onchange="window.assignPolygonToGroup(${polygon.id}, this.value ? parseInt(this.value) : null)">
+                <option value="">No group</option>
+                ${state.groups.map(g =>
+                    `<option value="${g.id}" ${polygon.groupId === g.id ? 'selected' : ''}>${g.name}</option>`
+                ).join('')}
+            </select>
+            <button class="btn-icon ${polygon.hidden ? 'btn-hidden-active' : ''}" onclick="window.toggleHidePolygon(${polygon.id})" title="${polygon.hidden ? 'Show' : 'Hide'}">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    ${polygon.hidden ?
+                        '<path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/><path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.299l.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/><path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709z"/><path d="M13.646 14.354l-12-12 .708-.708 12 12-.708.708z"/>'
+                        : '<path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/><path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8zm8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/>'}
+                </svg>
+            </button>
+            <button class="btn-icon ${isFocused ? 'btn-focused' : ''}" onclick="window.toggleFocusPolygon(${polygon.id})" title="${isFocused ? 'Show All' : 'Focus'}">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <circle cx="8" cy="8" r="3"/>
+                    <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM2 8a6 6 0 1 1 12 0A6 6 0 0 1 2 8z"/>
+                </svg>
+            </button>
+            <button class="btn-icon btn-delete" onclick="window.deletePolygon(${polygon.id})" title="Delete Polygon">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                </svg>
+            </button>
+        </div>
+        <div class="polygon-body">
+            <div class="tracks-list">
+                ${polygon.tracks.length === 0 ? '<p class="empty-state-small">No tracks yet</p>' : ''}
+                ${polygon.tracks.map(track => `
+                    <div class="track-item">
+                        <span class="track-name" title="${track.name}">${track.name}</span>
+                        <div class="track-actions">
+                            <select class="track-move-select" onchange="window.handleMoveTrack(${track.id}, ${polygon.id}, this)">
+                                <option value="">Move to...</option>
+                                ${state.polygons.filter(p => p.id !== polygon.id).map(p =>
+                                    `<option value="${p.id}">${p.name}</option>`
+                                ).join('')}
+                            </select>
+                            <button class="btn-icon btn-delete-small" onclick="window.deleteTrack(${polygon.id}, ${track.id})" title="Delete Track">
+                                ×
+                            </button>
                         </div>
-                    `).join('')}
-                </div>
-                <div class="upload-area">
-                    <input type="file" id="gpx-upload-${polygon.id}" accept=".gpx" multiple style="display: none;"
-                           onchange="window.handleGPXUploadEvent(${polygon.id}, this.files)">
-                    <button class="btn btn-secondary btn-small" onclick="document.getElementById('gpx-upload-${polygon.id}').click()">
-                        + Add GPX Files
-                    </button>
-                </div>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="upload-area">
+                <input type="file" id="gpx-upload-${polygon.id}" accept=".gpx" multiple style="display: none;"
+                       onchange="window.handleGPXUploadEvent(${polygon.id}, this.files)">
+                <button class="btn btn-secondary btn-small" onclick="document.getElementById('gpx-upload-${polygon.id}').click()">
+                    + Add GPX Files
+                </button>
             </div>
         </div>
-    `).join('');
+    </div>
+    `;
 }
 
 function handleMoveTrack(trackId, fromPolygonId, selectElement) {
@@ -363,6 +662,20 @@ async function handleUploadSession(event) {
 
         // Load new state
         state = newState;
+
+        // Ensure backwards compatibility
+        if (!state.groups) {
+            state.groups = [];
+        }
+        if (!state.nextGroupId) {
+            state.nextGroupId = 1;
+        }
+        if (state.focusedPolygonId === undefined) {
+            state.focusedPolygonId = null;
+        }
+        if (state.focusedGroupId === undefined) {
+            state.focusedGroupId = null;
+        }
         colorIndex = state.polygons.length;
         restoreState();
         saveState();
@@ -385,6 +698,15 @@ window.renamePolygon = renamePolygon;
 window.deleteTrack = deleteTrack;
 window.handleMoveTrack = handleMoveTrack;
 window.handleGPXUploadEvent = handleGPXUploadEvent;
+window.toggleFocusPolygon = toggleFocusPolygon;
+window.createGroup = createGroup;
+window.deleteGroup = deleteGroup;
+window.renameGroup = renameGroup;
+window.toggleGroupCollapse = toggleGroupCollapse;
+window.assignPolygonToGroup = assignPolygonToGroup;
+window.toggleFocusGroup = toggleFocusGroup;
+window.toggleHidePolygon = toggleHidePolygon;
+window.toggleHideGroup = toggleHideGroup;
 
 // Initialize on DOM ready
 if (document.readyState === 'loading') {

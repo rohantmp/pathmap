@@ -686,8 +686,8 @@ export class LabelManager {
         const centerLat = polygon.hull.reduce((sum, v) => sum + v.lat, 0) / polygon.hull.length;
         const centerLon = polygon.hull.reduce((sum, v) => sum + v.lon, 0) / polygon.hull.length;
 
-        // Check if centroid is clear of vertex labels
         const bounds = this.map.getBounds();
+
         const zoom = this.map.getZoom();
         const metersPerPixel = 156543.03392 * Math.cos(centerLat * Math.PI / 180) / Math.pow(2, zoom);
         const pixelsToDegrees = (pixels) => (metersPerPixel * pixels) / 111320;
@@ -706,7 +706,29 @@ export class LabelManager {
             { lat: centerLat, lon: centerLon - pixelsToDegrees(40) }, // West
         ];
 
-        candidates.forEach(candidate => {
+        // Filter candidates to those within map bounds
+        const visibleCandidates = candidates.filter(c => bounds.contains(L.latLng(c.lat, c.lon)));
+
+        // If no candidates are visible but polygon is partially visible,
+        // clamp the centroid to be within bounds
+        let candidatesToCheck;
+        if (visibleCandidates.length > 0) {
+            candidatesToCheck = visibleCandidates;
+        } else {
+            // Clamp centroid to visible area with padding
+            const padding = pixelsToDegrees(50);
+            const clampedLat = Math.max(
+                bounds.getSouth() + padding,
+                Math.min(bounds.getNorth() - padding, centerLat)
+            );
+            const clampedLon = Math.max(
+                bounds.getWest() + padding,
+                Math.min(bounds.getEast() - padding, centerLon)
+            );
+            candidatesToCheck = [{ lat: clampedLat, lon: clampedLon }];
+        }
+
+        candidatesToCheck.forEach(candidate => {
             // Calculate minimum distance to any label
             let minDist = Infinity;
             this.labels.forEach(label => {

@@ -52,6 +52,15 @@ body {
     gap: 0.75rem;
 }
 
+.create-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.create-buttons .btn {
+    flex: 1;
+}
+
 .polygons-list {
     flex: 1;
     overflow-y: auto;
@@ -116,6 +125,26 @@ body {
     color: #e74c3c;
 }
 
+.btn-focused {
+    background: #d4edda;
+    color: #28a745;
+}
+
+.btn-focused:hover {
+    background: #c3e6cb;
+    color: #1e7e34;
+}
+
+.btn-hidden-active {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.btn-hidden-active:hover {
+    background: #f5c6cb;
+    color: #491217;
+}
+
 .btn-delete-small {
     background: transparent;
     border: none;
@@ -145,6 +174,69 @@ body {
     cursor: pointer;
 }
 
+/* Group Cards */
+.group-card {
+    background: #f0f4f8;
+    border: 2px solid #cbd5e0;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+    transition: opacity 0.2s;
+}
+
+.group-card.group-hidden {
+    opacity: 0.4;
+}
+
+.group-header {
+    padding: 0.75rem 1rem;
+    background: #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.group-name {
+    flex: 1;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: white;
+}
+
+.group-name:focus {
+    outline: none;
+    border-color: #3498db;
+}
+
+.group-count {
+    font-size: 0.75rem;
+    color: #7f8c8d;
+    font-weight: 500;
+}
+
+.group-polygons {
+    padding: 0.5rem;
+}
+
+.group-polygons .polygon-card {
+    margin-bottom: 0.5rem;
+}
+
+.group-polygons .polygon-card:last-child {
+    margin-bottom: 0;
+}
+
+.btn-collapse {
+    transition: transform 0.2s;
+}
+
+.btn-collapse svg {
+    transition: transform 0.2s;
+}
+
 /* Polygon Cards */
 .polygon-card {
     background: white;
@@ -152,6 +244,24 @@ body {
     border-radius: 8px;
     margin-bottom: 1rem;
     overflow: hidden;
+    transition: opacity 0.2s;
+}
+
+.polygon-card.in-group {
+    border-radius: 6px;
+}
+
+.polygon-card.polygon-hidden {
+    opacity: 0.4;
+}
+
+.polygon-group-select {
+    padding: 0.25rem 0.4rem;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    max-width: 80px;
 }
 
 .polygon-header {
@@ -228,6 +338,30 @@ body {
 
 .upload-area {
     padding-top: 0.5rem;
+}
+
+/* Export Panel */
+.export-panel {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fa;
+}
+
+.export-panel h3 {
+    margin: 0 0 0.75rem 0;
+    font-size: 1rem;
+    color: #2c3e50;
+}
+
+.export-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.export-buttons .btn {
+    flex: 1;
+    min-width: 80px;
 }
 
 /* Settings Panel */

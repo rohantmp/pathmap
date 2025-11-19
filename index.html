@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PathMap - GPX Track Mapping</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -30,7 +29,10 @@
             </div>
 
             <div class="controls">
-                <button id="create-polygon" class="btn btn-primary">+ New Polygon</button>
+                <div class="create-buttons">
+                    <button id="create-polygon" class="btn btn-primary">+ Polygon</button>
+                    <button id="create-group" class="btn btn-secondary">+ Group</button>
+                </div>
                 <label class="toggle-control">
                     <input type="checkbox" id="toggle-tracks">
                     <span>Show GPX Tracks</span>
@@ -40,6 +42,17 @@
                     <span>Show Repulsion Fields</span>
                 </label>
                 <button id="toggle-settings" class="btn btn-secondary">Label Settings</button>
+                <button id="toggle-export" class="btn btn-secondary">Export</button>
+            </div>
+
+            <div class="export-panel" id="export-panel" style="display: none;">
+                <h3>Export Options</h3>
+                <div class="export-buttons">
+                    <button id="export-png" class="btn btn-secondary btn-small">PNG Snapshot</button>
+                    <button id="export-kml" class="btn btn-secondary btn-small">KML</button>
+                    <button id="export-geojson" class="btn btn-secondary btn-small">GeoJSON</button>
+                    <button id="export-tracks-geojson" class="btn btn-secondary btn-small">Tracks GeoJSON</button>
+                </div>
             </div>
 
             <div class="settings-panel" id="settings-panel" style="display: none;">
