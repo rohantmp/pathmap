@@ -680,3 +680,21 @@ body {
 .leaflet-popup-content-wrapper {
     border-radius: 8px;
 }
+
+/* Area Tooltip */
+.area-tooltip {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Compass Rose */
+.compass-rose {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}

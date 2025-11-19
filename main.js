@@ -64,6 +64,7 @@ function init() {
     document.getElementById('toggle-tracks').addEventListener('change', handleToggleTracks);
     document.getElementById('toggle-group-bounds').addEventListener('change', handleToggleGroupBounds);
     document.getElementById('toggle-debug-fields').addEventListener('change', handleToggleDebugFields);
+    document.getElementById('area-unit').addEventListener('change', handleAreaUnitChange);
     document.getElementById('download-session').addEventListener('click', handleDownloadSession);
     document.getElementById('upload-session').addEventListener('click', () => {
         document.getElementById('session-file-input').click();
@@ -570,6 +571,13 @@ function computeConvexHull(points) {
 function handleToggleDebugFields(event) {
     const showDebug = event.target.checked;
     mapManager.labelManager.toggleDebugFields(showDebug);
+}
+
+function handleAreaUnitChange(event) {
+    const unit = event.target.value;
+    mapManager.setAreaUnit(unit);
+    // Refresh all polygons to update tooltips
+    updateMapVisibility();
 }
 
 function renderPolygonList() {

@@ -18,7 +18,43 @@ export class MapManager {
             maxNativeZoom: 18
         }).addTo(this.map);
 
+        // Add labels overlay (place names, roads, etc.)
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 22,
+            pane: 'overlayPane'
+        }).addTo(this.map);
+
+        // Add scale control
+        L.control.scale({
+            position: 'bottomleft',
+            imperial: true,
+            metric: true
+        }).addTo(this.map);
+
+        // Add compass rose
+        const CompassControl = L.Control.extend({
+            options: { position: 'topright' },
+            onAdd: function() {
+                const container = L.DomUtil.create('div', 'compass-rose');
+                container.innerHTML = `
+                    <svg width="50" height="50" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="45" fill="rgba(255,255,255,0.9)" stroke="#333" stroke-width="2"/>
+                        <polygon points="50,10 45,40 50,35 55,40" fill="#e74c3c"/>
+                        <polygon points="50,90 45,60 50,65 55,60" fill="#333"/>
+                        <polygon points="10,50 40,45 35,50 40,55" fill="#333"/>
+                        <polygon points="90,50 60,45 65,50 60,55" fill="#333"/>
+                        <text x="50" y="8" text-anchor="middle" font-size="10" font-weight="bold" fill="#e74c3c">N</text>
+                    </svg>
+                `;
+                return container;
+            }
+        });
+        new CompassControl().addTo(this.map);
+
         this.polygonLayers = new Map(); // polygonId -> layer group
+        this.areaUnit = 'acres'; // Default area unit
         this.trackLayers = new Map(); // polygonId -> array of track layers
         this.polygonData = new Map(); // polygonId -> { id, hull, color }
         this.groupBoundaryLayers = new Map(); // groupId -> layer
@@ -74,6 +110,14 @@ export class MapManager {
             fillOpacity: 0.2,
             weight: 2
         }).addTo(layerGroup);
+
+        // Calculate area and bind tooltip
+        const area = this.calculateArea(hull);
+        const areaText = this.formatArea(area);
+        polygon.bindTooltip(() => `${name ? name + '<br>' : ''}${this.formatArea(area)}`, {
+            sticky: true,
+            className: 'area-tooltip'
+        });
 
         this.polygonLayers.set(polygonId, layerGroup);
 
@@ -155,6 +199,69 @@ export class MapManager {
      */
     setShowGroupBounds(show) {
         this.showGroupBounds = show;
+    }
+
+    /**
+     * Set the area unit for display
+     */
+    setAreaUnit(unit) {
+        this.areaUnit = unit;
+    }
+
+    /**
+     * Calculate area of a polygon in square meters using the Shoelace formula
+     * with geodesic correction
+     */
+    calculateArea(hull) {
+        if (!hull || hull.length < 3) return 0;
+
+        // Use the Shoelace formula with lat/lng converted to approximate meters
+        // This provides a reasonable approximation for most polygon sizes
+        let area = 0;
+        const n = hull.length;
+
+        for (let i = 0; i < n; i++) {
+            const j = (i + 1) % n;
+            const lat1 = hull[i].lat * Math.PI / 180;
+            const lat2 = hull[j].lat * Math.PI / 180;
+            const lon1 = hull[i].lon * Math.PI / 180;
+            const lon2 = hull[j].lon * Math.PI / 180;
+
+            // Spherical excess formula for geodesic area
+            area += (lon2 - lon1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+        }
+
+        // Earth's radius in meters
+        const R = 6371000;
+        area = Math.abs(area * R * R / 2);
+
+        return area; // Returns square meters
+    }
+
+    /**
+     * Format area in the selected unit
+     */
+    formatArea(sqMeters) {
+        const conversions = {
+            'sqm': { factor: 1, label: 'm²' },
+            'sqkm': { factor: 0.000001, label: 'km²' },
+            'sqmi': { factor: 3.861e-7, label: 'mi²' },
+            'sqft': { factor: 10.7639, label: 'ft²' },
+            'acres': { factor: 0.000247105, label: 'acres' },
+            'hectares': { factor: 0.0001, label: 'ha' }
+        };
+
+        const conv = conversions[this.areaUnit] || conversions.acres;
+        const value = sqMeters * conv.factor;
+
+        // Format based on size
+        if (value >= 1000) {
+            return `${value.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${conv.label}`;
+        } else if (value >= 10) {
+            return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${conv.label}`;
+        } else {
+            return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${conv.label}`;
+        }
     }
 
     /**
