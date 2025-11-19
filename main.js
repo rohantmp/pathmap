@@ -62,6 +62,7 @@ function init() {
     document.getElementById('create-polygon').addEventListener('click', createPolygon);
     document.getElementById('create-group').addEventListener('click', createGroup);
     document.getElementById('toggle-tracks').addEventListener('change', handleToggleTracks);
+    document.getElementById('toggle-group-bounds').addEventListener('change', handleToggleGroupBounds);
     document.getElementById('toggle-debug-fields').addEventListener('change', handleToggleDebugFields);
     document.getElementById('download-session').addEventListener('click', handleDownloadSession);
     document.getElementById('upload-session').addEventListener('click', () => {
@@ -141,7 +142,9 @@ function setupSettingsSliders() {
         { id: 'min-vertex-dist', valueId: 'min-vertex-dist-value', format: v => v },
         { id: 'max-label-distance', valueId: 'max-label-distance-value', format: v => v },
         { id: 'min-vertex-angle', valueId: 'min-vertex-angle-value', format: v => v },
-        { id: 'iterations', valueId: 'iterations-value', format: v => v }
+        { id: 'label-repulsion', valueId: 'label-repulsion-value', format: v => v },
+        { id: 'center-repulsion', valueId: 'center-repulsion-value', format: v => v },
+        { id: 'spring-strength', valueId: 'spring-strength-value', format: v => v.toFixed(2) }
     ];
 
     sliders.forEach(({ id, valueId, format }) => {
@@ -163,7 +166,9 @@ function applyLabelSettingsLive() {
         minVertexDistance: parseFloat(document.getElementById('min-vertex-dist').value),
         maxLabelDistance: parseFloat(document.getElementById('max-label-distance').value),
         minVertexAngle: parseFloat(document.getElementById('min-vertex-angle').value),
-        iterations: parseInt(document.getElementById('iterations').value)
+        eqLabel: parseFloat(document.getElementById('label-repulsion').value),
+        eqCenter: parseFloat(document.getElementById('center-repulsion').value),
+        springStrength: parseFloat(document.getElementById('spring-strength').value)
     };
 
     mapManager.labelManager.updateSettings(settings);
@@ -178,8 +183,12 @@ function resetSettings() {
     document.getElementById('max-label-distance-value').textContent = '80';
     document.getElementById('min-vertex-angle').value = 10;
     document.getElementById('min-vertex-angle-value').textContent = '10';
-    document.getElementById('iterations').value = 200;
-    document.getElementById('iterations-value').textContent = '200';
+    document.getElementById('label-repulsion').value = 30;
+    document.getElementById('label-repulsion-value').textContent = '30';
+    document.getElementById('center-repulsion').value = 100;
+    document.getElementById('center-repulsion-value').textContent = '100';
+    document.getElementById('spring-strength').value = 0.1;
+    document.getElementById('spring-strength-value').textContent = '0.10';
 
     applyLabelSettingsLive();
 }
@@ -471,6 +480,93 @@ function handleToggleTracks(event) {
     });
 }
 
+function handleToggleGroupBounds(event) {
+    const showGroupBounds = event.target.checked;
+    mapManager.setShowGroupBounds(showGroupBounds);
+    renderGroupBoundaries();
+}
+
+function renderGroupBoundaries() {
+    // Clear existing group boundaries
+    mapManager.clearGroupBoundaries();
+
+    if (!mapManager.showGroupBounds) return;
+
+    // For each group, compute convex hull of all polygon hulls
+    state.groups.forEach(group => {
+        if (group.hidden) return;
+
+        const groupPolygons = state.polygons.filter(p => p.groupId === group.id && p.hull && !p.hidden);
+        if (groupPolygons.length === 0) return;
+
+        // Collect all points from all polygons in the group
+        const allPoints = [];
+        groupPolygons.forEach(polygon => {
+            polygon.hull.forEach(point => {
+                allPoints.push([point.lat, point.lon]);
+            });
+        });
+
+        if (allPoints.length < 3) return;
+
+        // Compute convex hull of all points
+        const groupHull = computeConvexHull(allPoints);
+
+        // Add the group boundary to the map
+        mapManager.addGroupBoundary(group.id, groupHull, group.name);
+    });
+}
+
+// Convex hull using Graham scan algorithm
+function computeConvexHull(points) {
+    if (points.length < 3) return points;
+
+    // Find the point with lowest y (and leftmost if tie)
+    let start = 0;
+    for (let i = 1; i < points.length; i++) {
+        if (points[i][0] < points[start][0] ||
+            (points[i][0] === points[start][0] && points[i][1] < points[start][1])) {
+            start = i;
+        }
+    }
+
+    // Swap start point to beginning
+    [points[0], points[start]] = [points[start], points[0]];
+    const pivot = points[0];
+
+    // Sort points by polar angle with respect to pivot
+    const sorted = points.slice(1).sort((a, b) => {
+        const angleA = Math.atan2(a[0] - pivot[0], a[1] - pivot[1]);
+        const angleB = Math.atan2(b[0] - pivot[0], b[1] - pivot[1]);
+        if (angleA !== angleB) return angleA - angleB;
+        // If same angle, sort by distance
+        const distA = (a[0] - pivot[0]) ** 2 + (a[1] - pivot[1]) ** 2;
+        const distB = (b[0] - pivot[0]) ** 2 + (b[1] - pivot[1]) ** 2;
+        return distA - distB;
+    });
+
+    // Build hull using stack
+    const hull = [pivot];
+
+    for (const point of sorted) {
+        while (hull.length > 1) {
+            const top = hull[hull.length - 1];
+            const second = hull[hull.length - 2];
+            // Cross product to check turn direction
+            const cross = (top[1] - second[1]) * (point[0] - top[0]) -
+                         (top[0] - second[0]) * (point[1] - top[1]);
+            if (cross <= 0) {
+                hull.pop();
+            } else {
+                break;
+            }
+        }
+        hull.push(point);
+    }
+
+    return hull.map(p => ({ lat: p[0], lon: p[1] }));
+}
+
 function handleToggleDebugFields(event) {
     const showDebug = event.target.checked;
     mapManager.labelManager.toggleDebugFields(showDebug);
@@ -492,8 +588,13 @@ function renderPolygonList() {
         const isGroupFocused = state.focusedGroupId === group.id;
         const isGroupDimmed = (state.focusedGroupId !== null && state.focusedGroupId !== group.id) || group.hidden;
         html += `
-        <div class="group-card ${isGroupDimmed ? 'group-hidden' : ''}" data-group-id="${group.id}">
+        <div class="group-card ${isGroupDimmed ? 'group-hidden' : ''}" data-group-id="${group.id}" draggable="true"
+             ondragstart="window.handleDragStart(event, 'group', ${group.id})"
+             ondragend="window.handleDragEnd(event)"
+             ondragover="window.handleDragOver(event)"
+             ondrop="window.handleDrop(event, 'group', ${group.id})">
             <div class="group-header">
+                <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
                 <button class="btn-icon btn-collapse" onclick="window.toggleGroupCollapse(${group.id})" title="${group.collapsed ? 'Expand' : 'Collapse'}">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="transform: rotate(${group.collapsed ? '-90deg' : '0'})">
                         <path d="M4.5 5.5L8 9l3.5-3.5"/>
@@ -543,8 +644,13 @@ function renderPolygonCard(polygon, inGroup) {
     const isDimmed = (state.focusedPolygonId !== null && state.focusedPolygonId !== polygon.id) || polygon.hidden;
 
     return `
-    <div class="polygon-card ${isDimmed ? 'polygon-hidden' : ''} ${inGroup ? 'in-group' : ''}" data-polygon-id="${polygon.id}">
+    <div class="polygon-card ${isDimmed ? 'polygon-hidden' : ''} ${inGroup ? 'in-group' : ''}" data-polygon-id="${polygon.id}" draggable="true"
+         ondragstart="window.handleDragStart(event, 'polygon', ${polygon.id})"
+         ondragend="window.handleDragEnd(event)"
+         ondragover="window.handleDragOver(event)"
+         ondrop="window.handleDrop(event, 'polygon', ${polygon.id})">
         <div class="polygon-header">
+            <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
             <input type="text" class="polygon-name" value="${polygon.name}"
                    onchange="window.renamePolygon(${polygon.id}, this.value)">
             <input type="color" class="polygon-color" value="${polygon.color}"
@@ -690,6 +796,93 @@ async function handleUploadSession(event) {
     event.target.value = '';
 }
 
+// Drag and drop state
+let dragData = null;
+
+function handleDragStart(event, type, id) {
+    event.stopPropagation(); // Prevent polygon drag from triggering group drag
+    dragData = { type, id };
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', JSON.stringify({ type, id }));
+    event.target.closest(type === 'group' ? '.group-card' : '.polygon-card').classList.add('dragging');
+}
+
+function handleDragEnd(event) {
+    dragData = null;
+    document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+    document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+}
+
+function handleDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation(); // Prevent bubbling
+    event.dataTransfer.dropEffect = 'move';
+
+    // Find the closest card, but prefer polygon-card over group-card
+    const polygonCard = event.target.closest('.polygon-card');
+    const groupCard = event.target.closest('.group-card');
+
+    let targetCard = polygonCard || groupCard;
+
+    if (targetCard && !targetCard.classList.contains('dragging')) {
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        targetCard.classList.add('drag-over');
+    }
+}
+
+function handleDrop(event, targetType, targetId) {
+    event.preventDefault();
+    event.stopPropagation(); // Prevent bubbling to parent (e.g., group when dropping on polygon)
+
+    if (!dragData) return;
+
+    const { type: sourceType, id: sourceId } = dragData;
+
+    if (sourceId === targetId) return;
+
+    if (sourceType === 'group' && targetType === 'group') {
+        // Reorder groups
+        const sourceIndex = state.groups.findIndex(g => g.id === sourceId);
+        const targetIndex = state.groups.findIndex(g => g.id === targetId);
+
+        if (sourceIndex !== -1 && targetIndex !== -1) {
+            const [removed] = state.groups.splice(sourceIndex, 1);
+            state.groups.splice(targetIndex, 0, removed);
+        }
+    } else if (sourceType === 'polygon' && targetType === 'polygon') {
+        // Reorder polygons and move to target's group
+        const sourcePolygon = state.polygons.find(p => p.id === sourceId);
+        const targetPolygon = state.polygons.find(p => p.id === targetId);
+
+        if (sourcePolygon && targetPolygon) {
+            // Move source polygon to target's group
+            sourcePolygon.groupId = targetPolygon.groupId;
+
+            // Reorder within the array
+            const sourceIndex = state.polygons.findIndex(p => p.id === sourceId);
+            const targetIndex = state.polygons.findIndex(p => p.id === targetId);
+
+            if (sourceIndex !== -1 && targetIndex !== -1) {
+                const [removed] = state.polygons.splice(sourceIndex, 1);
+                state.polygons.splice(targetIndex, 0, removed);
+            }
+        }
+    } else if (sourceType === 'polygon' && targetType === 'group') {
+        // Move polygon into a group
+        const sourcePolygon = state.polygons.find(p => p.id === sourceId);
+        if (sourcePolygon) {
+            sourcePolygon.groupId = targetId;
+        }
+    }
+
+    renderPolygonList();
+    updateMapVisibility();
+    saveState();
+
+    // Clean up
+    document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+}
+
 // Expose functions to window for inline event handlers
 window.createPolygon = createPolygon;
 window.deletePolygon = deletePolygon;
@@ -707,6 +900,10 @@ window.assignPolygonToGroup = assignPolygonToGroup;
 window.toggleFocusGroup = toggleFocusGroup;
 window.toggleHidePolygon = toggleHidePolygon;
 window.toggleHideGroup = toggleHideGroup;
+window.handleDragStart = handleDragStart;
+window.handleDragEnd = handleDragEnd;
+window.handleDragOver = handleDragOver;
+window.handleDrop = handleDrop;
 
 // Initialize on DOM ready
 if (document.readyState === 'loading') {

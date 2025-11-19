@@ -38,8 +38,8 @@
                     <span>Show GPX Tracks</span>
                 </label>
                 <label class="toggle-control">
-                    <input type="checkbox" id="toggle-debug-fields">
-                    <span>Show Repulsion Fields</span>
+                    <input type="checkbox" id="toggle-group-bounds">
+                    <span>Show Group Boundaries</span>
                 </label>
                 <button id="toggle-settings" class="btn btn-secondary">Label Settings</button>
                 <button id="toggle-export" class="btn btn-secondary">Export</button>
@@ -60,6 +60,7 @@
 
                 <div class="setting-group">
                     <label>Min Vertex Distance (px)
+                        <span class="info-icon" title="Minimum distance between vertices before labels are grouped together. Lower values show more labels.">i</span>
                         <input type="range" id="min-vertex-dist" min="10" max="100" value="30" step="5" class="live-setting">
                         <span id="min-vertex-dist-value">30</span>
                     </label>
@@ -67,6 +68,7 @@
 
                 <div class="setting-group">
                     <label>Max Label Distance (px)
+                        <span class="info-icon" title="Maximum distance a label can be pushed away from its vertex. Higher values allow more spread.">i</span>
                         <input type="range" id="max-label-distance" min="30" max="200" value="80" step="10" class="live-setting">
                         <span id="max-label-distance-value">80</span>
                     </label>
@@ -74,17 +76,40 @@
 
                 <div class="setting-group">
                     <label>Min Vertex Angle (degrees)
+                        <span class="info-icon" title="Hide labels at vertices with angles shallower than this. Higher values hide more labels at gentle curves.">i</span>
                         <input type="range" id="min-vertex-angle" min="0" max="45" value="10" step="5" class="live-setting">
                         <span id="min-vertex-angle-value">10</span>
                     </label>
                 </div>
 
                 <div class="setting-group">
-                    <label>Iterations
-                        <input type="range" id="iterations" min="50" max="500" value="200" step="50" class="live-setting">
-                        <span id="iterations-value">200</span>
+                    <label>Label Repulsion
+                        <span class="info-icon" title="How aggressively labels push away from each other. Higher values reduce overlap but may stretch labels further.">i</span>
+                        <input type="range" id="label-repulsion" min="10" max="100" value="30" step="5" class="live-setting">
+                        <span id="label-repulsion-value">30</span>
                     </label>
                 </div>
+
+                <div class="setting-group">
+                    <label>Center Repulsion
+                        <span class="info-icon" title="How strongly labels are pushed outward from polygon centers. Higher values keep labels well outside polygons.">i</span>
+                        <input type="range" id="center-repulsion" min="0" max="200" value="100" step="10" class="live-setting">
+                        <span id="center-repulsion-value">100</span>
+                    </label>
+                </div>
+
+                <div class="setting-group">
+                    <label>Spring Strength
+                        <span class="info-icon" title="How strongly labels are pulled back toward their vertex. Higher values keep labels closer to vertices.">i</span>
+                        <input type="range" id="spring-strength" min="0.01" max="0.5" value="0.1" step="0.01" class="live-setting">
+                        <span id="spring-strength-value">0.10</span>
+                    </label>
+                </div>
+
+                <label class="toggle-control" style="margin: 0.75rem 0;">
+                    <input type="checkbox" id="toggle-debug-fields">
+                    <span>Show Repulsion Fields</span>
+                </label>
 
                 <button id="reset-settings" class="btn btn-secondary" style="width: 100%; margin-top: 0.5rem;">Reset to Defaults</button>
             </div>

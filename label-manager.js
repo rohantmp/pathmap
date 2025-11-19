@@ -17,6 +17,8 @@ export class LabelManager {
         this.isSimulating = false;
         this.simulationInterval = null;
         this.manuallyPositioned = new Set(); // Track labels that have been manually dragged
+        this.velocities = []; // Velocity for each label { lat, lon }
+        this.previousPositions = []; // For Verlet integration
 
         // Tunable settings
         this.settings = {
@@ -87,56 +89,70 @@ export class LabelManager {
             }
         });
 
-        // Draw vertex repulsion fields (15px radius, cubic falloff)
-        const vertexRepulsionRadius = pixelsToDegrees(15);
+        // Draw vertex repulsion fields with gradient (using eqVertex strength)
+        const vertexRadius = 15; // Base radius in pixels
         allVertices.forEach(vertex => {
-            const circle = L.circle([vertex.lat, vertex.lon], {
-                radius: 15 * metersPerPixel, // Convert to meters
-                color: '#ff0000',
-                fillColor: '#ff0000',
-                fillOpacity: 0.15,
-                weight: 1,
-                opacity: 0.5,
-                interactive: false
-            }).addTo(this.map);
-            this.debugLayers.push(circle);
+            // Create gradient rings for vertex repulsion
+            const rings = 4;
+            for (let i = rings; i >= 1; i--) {
+                const radius = (vertexRadius * i / rings) * metersPerPixel;
+                const opacity = 0.1 + (0.2 * (rings - i + 1) / rings);
+                const circle = L.circle([vertex.lat, vertex.lon], {
+                    radius: radius,
+                    color: '#ff0000',
+                    fillColor: '#ff0000',
+                    fillOpacity: opacity,
+                    weight: i === rings ? 1 : 0,
+                    opacity: 0.5,
+                    interactive: false
+                }).addTo(this.map);
+                this.debugLayers.push(circle);
+            }
         });
 
-        // Draw label bounding boxes and close-range repulsion zones
+        // Draw label bounding boxes with gradient based on eqLabel
+        const labelStrengthScale = this.settings.eqLabel / 30; // Normalize to default
         this.labels.forEach(label => {
             const w = pixelsToDegrees(label.width) / 2;
             const h = pixelsToDegrees(label.height) / 2;
-            const buffer = pixelsToDegrees(5);
+            const buffer = pixelsToDegrees(5 * labelStrengthScale);
 
-            // Label bounding box (AABB collision zone)
+            // Get the actual label element dimensions to find center
+            // Labels are anchored at top-left [0, 0], so we need to offset to center
+            const centerLat = label.labelLatLng.lat - h;
+            const centerLng = label.labelLatLng.lng + w;
+
+            // Label bounding box (AABB collision zone) - size scales with repulsion
             const bounds = [
-                [label.labelLatLng.lat - h - buffer, label.labelLatLng.lng - w - buffer],
-                [label.labelLatLng.lat + h + buffer, label.labelLatLng.lng + w + buffer]
+                [centerLat - h - buffer, centerLng - w - buffer],
+                [centerLat + h + buffer, centerLng + w + buffer]
             ];
             const rect = L.rectangle(bounds, {
                 color: '#0088ff',
                 fillColor: '#0088ff',
-                fillOpacity: 0.1,
-                weight: 1,
-                opacity: 0.5,
+                fillOpacity: 0.15,
+                weight: 2,
+                opacity: 0.7,
                 interactive: false
             }).addTo(this.map);
             this.debugLayers.push(rect);
 
-            // Close-range extreme repulsion zone (5px)
-            const closeRange = L.circle([label.labelLatLng.lat, label.labelLatLng.lng], {
-                radius: 5 * metersPerPixel,
-                color: '#ff00ff',
-                fillColor: '#ff00ff',
-                fillOpacity: 0.2,
-                weight: 1,
-                opacity: 0.6,
+            // Inner strong repulsion zone
+            const innerBounds = [
+                [centerLat - h, centerLng - w],
+                [centerLat + h, centerLng + w]
+            ];
+            const innerRect = L.rectangle(innerBounds, {
+                color: '#0044ff',
+                fillColor: '#0044ff',
+                fillOpacity: 0.25,
+                weight: 0,
                 interactive: false
             }).addTo(this.map);
-            this.debugLayers.push(closeRange);
+            this.debugLayers.push(innerRect);
         });
 
-        // Draw polygon center repulsion (inverse-square, shown as gradient circle)
+        // Draw polygon center repulsion with gradient rings based on eqCenter
         const polygonCenters = new Map();
         this.labels.forEach(label => {
             if (label.polygonVertices && label.polygonVertices.length > 0) {
@@ -149,22 +165,28 @@ export class LabelManager {
             }
         });
 
+        const centerRadius = this.settings.eqCenter; // Use actual setting for radius
         polygonCenters.forEach(center => {
-            // Outer influence zone
-            const outerCircle = L.circle([center.lat, center.lon], {
-                radius: 100 * metersPerPixel,
-                color: '#00ff00',
-                fillColor: '#00ff00',
-                fillOpacity: 0.05,
-                weight: 1,
-                opacity: 0.3,
-                interactive: false
-            }).addTo(this.map);
-            this.debugLayers.push(outerCircle);
+            // Create gradient rings for center repulsion
+            const rings = 5;
+            for (let i = rings; i >= 1; i--) {
+                const radius = (centerRadius * i / rings) * metersPerPixel;
+                const opacity = 0.03 + (0.12 * (rings - i + 1) / rings);
+                const circle = L.circle([center.lat, center.lon], {
+                    radius: radius,
+                    color: '#00ff00',
+                    fillColor: '#00ff00',
+                    fillOpacity: opacity,
+                    weight: i === rings ? 1 : 0,
+                    opacity: 0.4,
+                    interactive: false
+                }).addTo(this.map);
+                this.debugLayers.push(circle);
+            }
 
             // Center point
             const centerDot = L.circleMarker([center.lat, center.lon], {
-                radius: 4,
+                radius: 6,
                 color: '#00ff00',
                 fillColor: '#00ff00',
                 fillOpacity: 1,
@@ -379,17 +401,41 @@ export class LabelManager {
         this.isSimulating = true;
         let iterationCount = 0;
 
+        // Initialize velocities and previous positions for Verlet integration
+        this.velocities = this.labels.map(() => ({ lat: 0, lon: 0 }));
+        this.previousPositions = this.labels.map(label => ({
+            lat: label.labelLatLng.lat,
+            lon: label.labelLatLng.lng
+        }));
+
+        // Track energy for convergence detection
+        let previousEnergy = Infinity;
+        let stableCount = 0;
+        const stableThreshold = 10; // Stop if stable for this many frames
+
         // Run simulation with animation
         const animate = () => {
-            if (iterationCount < this.settings.iterations) {
-                // Run a few steps per frame for smoother animation
-                const stepsPerFrame = 5;
+            if (iterationCount < this.settings.iterations && stableCount < stableThreshold) {
+                // Run multiple physics steps per frame for stability
+                const stepsPerFrame = 3;
+                let totalEnergy = 0;
+
                 for (let i = 0; i < stepsPerFrame && iterationCount < this.settings.iterations; i++) {
-                    this.simulateStep();
+                    const energy = this.simulateStep();
+                    totalEnergy += energy;
                     iterationCount++;
                 }
 
-                // Render current positions
+                // Check for convergence
+                const avgEnergy = totalEnergy / stepsPerFrame;
+                if (avgEnergy < 0.0001 || Math.abs(avgEnergy - previousEnergy) < 0.00001) {
+                    stableCount++;
+                } else {
+                    stableCount = 0;
+                }
+                previousEnergy = avgEnergy;
+
+                // Render current positions with interpolation
                 this.renderLabels();
 
                 // Continue animation
@@ -427,7 +473,8 @@ export class LabelManager {
     }
 
     /**
-     * Simulate one step of force-directed positioning
+     * Simulate one step of force-directed positioning using Verlet integration
+     * Returns total kinetic energy for convergence detection
      */
     simulateStep() {
         const forces = this.labels.map(() => ({ lat: 0, lon: 0 }));
@@ -436,6 +483,10 @@ export class LabelManager {
         const zoom = this.map.getZoom();
         const metersPerPixel = 156543.03392 * Math.cos(0) / Math.pow(2, zoom);
         const pixelsToDegrees = (pixels) => (metersPerPixel * pixels) / 111320;
+
+        // Time step for simulation - this affects how quickly labels move
+        // Using a larger effective dt since Verlet is very stable
+        const dt = 1.0; // Normalized time step - forces are scaled appropriately
 
         // Collect all vertices from all polygons
         const allVertices = [];
@@ -568,8 +619,11 @@ export class LabelManager {
 
             if (dist > 0.00001) {
                 // Elastic spring - labels can stretch when avoiding collisions
-                forces[i].lon += dx * this.settings.springStrength;
-                forces[i].lat += dy * this.settings.springStrength;
+                // Every other vertex (odd index) is twice as springy
+                const springMultiplier = label.vertexIndex % 2 === 1 ? 2 : 1;
+                const effectiveSpring = this.settings.springStrength * springMultiplier;
+                forces[i].lon += dx * effectiveSpring;
+                forces[i].lat += dy * effectiveSpring;
             }
 
             // Repulsion from polygon center to push labels outward (configurable falloff)
@@ -637,8 +691,9 @@ export class LabelManager {
             }
         }
 
-        // Apply forces with damping and clamp to map bounds
+        // Apply forces using Verlet integration with velocity damping
         const bounds = this.map.getBounds();
+        let totalEnergy = 0;
 
         this.labels.forEach((label, i) => {
             // Skip manually positioned labels - don't apply physics to them
@@ -646,9 +701,38 @@ export class LabelManager {
                 return;
             }
 
-            // Apply force
-            let newLat = label.labelLatLng.lat + forces[i].lat * this.settings.damping;
-            let newLng = label.labelLatLng.lng + forces[i].lon * this.settings.damping;
+            // Initialize velocity if needed
+            if (!this.velocities[i]) {
+                this.velocities[i] = { lat: 0, lon: 0 };
+            }
+            if (!this.previousPositions[i]) {
+                this.previousPositions[i] = { lat: label.labelLatLng.lat, lon: label.labelLatLng.lng };
+            }
+
+            // Verlet integration: new_pos = pos + (pos - prev_pos) * damping + force * dt^2
+            // This naturally handles velocity and is more stable than Euler
+            const currentLat = label.labelLatLng.lat;
+            const currentLng = label.labelLatLng.lng;
+            const prevLat = this.previousPositions[i].lat;
+            const prevLng = this.previousPositions[i].lon;
+
+            // Calculate velocity from position difference (implicit velocity)
+            const velLat = (currentLat - prevLat) * this.settings.damping;
+            const velLng = (currentLng - prevLng) * this.settings.damping;
+
+            // Update velocities for energy calculation
+            this.velocities[i].lat = velLat;
+            this.velocities[i].lon = velLng;
+
+            // Calculate new position: pos + velocity + acceleration
+            // Scale forces down since they're accumulated from multiple sources
+            const forceScale = 0.15;
+            let newLat = currentLat + velLat + forces[i].lat * forceScale;
+            let newLng = currentLng + velLng + forces[i].lon * forceScale;
+
+            // Store current position as previous for next iteration
+            this.previousPositions[i].lat = currentLat;
+            this.previousPositions[i].lon = currentLng;
 
             // Constrain to maximum distance from vertex
             const maxDist = pixelsToDegrees(this.settings.maxLabelDistance);
@@ -661,17 +745,32 @@ export class LabelManager {
                 const scale = maxDist / vertexDist;
                 newLng = label.vertexLatLng.lng + vertexDx * scale;
                 newLat = label.vertexLatLng.lat + vertexDy * scale;
+
+                // When hitting max distance, reduce velocity to prevent bouncing
+                this.previousPositions[i].lat = newLat - velLat * 0.3;
+                this.previousPositions[i].lon = newLng - velLng * 0.3;
             }
 
             // Clamp label to stay within map bounds with padding
-            const padding = pixelsToDegrees(label.width / 2 + 10); // Half label width + 10px padding
+            const padding = pixelsToDegrees(label.width / 2 + 10);
             const paddingHeight = pixelsToDegrees(label.height / 2 + 10);
 
-            newLat = Math.max(bounds.getSouth() + paddingHeight, Math.min(bounds.getNorth() - paddingHeight, newLat));
-            newLng = Math.max(bounds.getWest() + padding, Math.min(bounds.getEast() - padding, newLng));
+            const clampedLat = Math.max(bounds.getSouth() + paddingHeight, Math.min(bounds.getNorth() - paddingHeight, newLat));
+            const clampedLng = Math.max(bounds.getWest() + padding, Math.min(bounds.getEast() - padding, newLng));
 
-            label.labelLatLng = L.latLng(newLat, newLng);
+            // If we hit bounds, adjust previous position to avoid bouncing
+            if (clampedLat !== newLat || clampedLng !== newLng) {
+                this.previousPositions[i].lat = clampedLat - velLat * 0.1;
+                this.previousPositions[i].lon = clampedLng - velLng * 0.1;
+            }
+
+            label.labelLatLng = L.latLng(clampedLat, clampedLng);
+
+            // Calculate kinetic energy for convergence detection
+            totalEnergy += velLat * velLat + velLng * velLng;
         });
+
+        return totalEnergy;
     }
 
     /**

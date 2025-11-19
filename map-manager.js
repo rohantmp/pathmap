@@ -21,7 +21,9 @@ export class MapManager {
         this.polygonLayers = new Map(); // polygonId -> layer group
         this.trackLayers = new Map(); // polygonId -> array of track layers
         this.polygonData = new Map(); // polygonId -> { id, hull, color }
+        this.groupBoundaryLayers = new Map(); // groupId -> layer
         this.showTracks = false;
+        this.showGroupBounds = false;
 
         // Initialize label manager
         this.labelManager = new LabelManager(this.map);
@@ -146,6 +148,58 @@ export class MapManager {
      */
     setShowTracks(show) {
         this.showTracks = show;
+    }
+
+    /**
+     * Toggle group boundary visibility
+     */
+    setShowGroupBounds(show) {
+        this.showGroupBounds = show;
+    }
+
+    /**
+     * Add a group boundary polygon to the map
+     */
+    addGroupBoundary(groupId, hull, name) {
+        // Remove existing boundary for this group
+        this.removeGroupBoundary(groupId);
+
+        if (!hull || hull.length < 3) return;
+
+        const latlngs = hull.map(p => [p.lat, p.lon]);
+
+        // Create dashed polygon for group boundary
+        const polygon = L.polygon(latlngs, {
+            color: '#ff6600',
+            weight: 3,
+            dashArray: '10, 6',
+            fill: false,
+            opacity: 0.9
+        });
+
+        polygon.addTo(this.map);
+        this.groupBoundaryLayers.set(groupId, polygon);
+    }
+
+    /**
+     * Remove a group boundary from the map
+     */
+    removeGroupBoundary(groupId) {
+        const layer = this.groupBoundaryLayers.get(groupId);
+        if (layer) {
+            this.map.removeLayer(layer);
+            this.groupBoundaryLayers.delete(groupId);
+        }
+    }
+
+    /**
+     * Clear all group boundaries
+     */
+    clearGroupBoundaries() {
+        this.groupBoundaryLayers.forEach(layer => {
+            this.map.removeLayer(layer);
+        });
+        this.groupBoundaryLayers.clear();
     }
 
     /**
