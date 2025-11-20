@@ -28,16 +28,24 @@ export function loadFromLocalStorage() {
 }
 
 /**
- * Download session as JSON file
+ * Download session as .pathmap file
  */
 export function downloadSession(state) {
-    const data = JSON.stringify(state, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
+    // Add metadata to help identify the file
+    const sessionData = {
+        version: '1.0',
+        type: 'PathMap Session',
+        created: new Date().toISOString(),
+        data: state
+    };
+
+    const data = JSON.stringify(sessionData, null, 2);
+    const blob = new Blob([data], { type: 'application/x-pathmap' });
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement('a');
     a.href = url;
-    a.download = `pathmap-session-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `pathmap-session-${new Date().toISOString().slice(0, 10)}.pathmap`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -45,7 +53,7 @@ export function downloadSession(state) {
 }
 
 /**
- * Upload session from JSON file
+ * Upload session from .pathmap or JSON file
  */
 export function uploadSession(file) {
     return new Promise((resolve, reject) => {
@@ -53,10 +61,17 @@ export function uploadSession(file) {
 
         reader.onload = (e) => {
             try {
-                const state = JSON.parse(e.target.result);
-                resolve(state);
+                const parsed = JSON.parse(e.target.result);
+
+                // Check if it's a new format with metadata
+                if (parsed.type === 'PathMap Session' && parsed.data) {
+                    resolve(parsed.data);
+                } else {
+                    // Legacy format or direct state object
+                    resolve(parsed);
+                }
             } catch (error) {
-                reject(new Error('Invalid JSON file'));
+                reject(new Error('Invalid session file. Please select a valid .pathmap or JSON file.'));
             }
         };
 

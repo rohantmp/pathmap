@@ -3,10 +3,10 @@ import { LabelManager } from './label-manager.js';
 
 export class MapManager {
     constructor(elementId) {
-        // Initialize Leaflet map
+        // Initialize Leaflet map (centered on India)
         this.map = L.map(elementId, {
-            center: [0, 0],
-            zoom: 2,
+            center: [22.5, 78.5],  // Center of India
+            zoom: 5,  // Good zoom level to see most of India
             zoomControl: false,  // We'll add it manually with custom position
             maxZoom: 22
         });
@@ -347,7 +347,7 @@ export class MapManager {
      */
     fitBounds() {
         if (this.polygonLayers.size === 0) {
-            this.map.setView([0, 0], 2);
+            this.map.setView([22.5, 78.5], 5);  // Default to India view
             return;
         }
 

@@ -3,174 +3,245 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PathMap - GPX Track Mapping</title>
+    <title>PathMap - GPX Track Mapping Tool</title>
+
+    <!-- Primary Meta Tags -->
+    <meta name="title" content="PathMap - GPX Track Mapping Tool">
+    <meta name="description" content="Create and manage polygons from GPX track data. Combine multiple GPS tracks into convex hull polygons on satellite maps.">
+    <meta name="keywords" content="GPX, GPS, mapping, tracks, polygons, convex hull, geographic, pathmap">
+    <meta name="author" content="PathMap">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://rohantmp.github.io/pathmap/">
+    <meta property="og:title" content="PathMap - GPX Track Mapping Tool">
+    <meta property="og:description" content="Create and manage polygons from GPX track data. Combine multiple GPS tracks into convex hull polygons on satellite maps.">
+    <meta property="og:image" content="https://rohantmp.github.io/pathmap/og-image.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://rohantmp.github.io/pathmap/">
+    <meta property="twitter:title" content="PathMap - GPX Track Mapping Tool">
+    <meta property="twitter:description" content="Create and manage polygons from GPX track data. Combine multiple GPS tracks into convex hull polygons on satellite maps.">
+
+    <!-- Favicon -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>">
+
+    <!-- Styles -->
     <link rel="stylesheet" href="./style.css">
 </head>
 <body>
     <div class="container">
         <div class="mobile-overlay" id="mobile-overlay"></div>
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-resize-handle" id="sidebar-resize-handle"></div>
+            <div class="sidebar-resize-handle" id="sidebar-resize-handle">
+                <div class="resize-indicator"></div>
+            </div>
             <div class="sidebar-header">
                 <h1>PathMap</h1>
                 <div class="session-controls">
-                    <button id="download-session" class="btn btn-secondary" title="Download Session">
+                    <button id="download-session" class="btn btn-secondary btn-with-text" title="Save current session to file">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                             <path d="M8 12L3 7h3V1h4v6h3L8 12z"/>
                             <path d="M14 14H2v1h12v-1z"/>
                         </svg>
+                        <span>Save</span>
                     </button>
-                    <button id="upload-session" class="btn btn-secondary" title="Upload Session">
+                    <button id="upload-session" class="btn btn-secondary btn-with-text" title="Load session from file">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                             <path d="M8 4L13 9h-3v6H6V9H3L8 4z"/>
                             <path d="M14 2H2v1h12V2z"/>
                         </svg>
+                        <span>Load</span>
                     </button>
-                    <input type="file" id="session-file-input" accept=".json" style="display: none;">
+                    <input type="file" id="session-file-input" accept=".pathmap,.json" style="display: none;">
                 </div>
             </div>
 
-            <div class="upload-zone" id="upload-zone"
-                 ondragenter="window.handleUploadZoneDragEnter(event)"
-                 ondragleave="window.handleUploadZoneDragLeave(event)"
-                 ondragover="window.handleUploadZoneDragOver(event)"
-                 ondrop="window.handleUploadZoneDrop(event)"
-                 onclick="document.getElementById('upload-zone-input').click()">
-                <div class="upload-zone-content">
-                    <svg width="32" height="32" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-                        <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+            <!-- Upload Section - each GPX creates a new polygon -->
+            <div class="upload-section-wrapper">
+                <button id="toggle-upload-section" class="upload-section-header active">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                        <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 1 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
                     </svg>
-                    <span>Drop GPX files here or click to upload</span>
+                    <span>+ Add Polygons</span>
+                    <svg class="chevron" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+                    </svg>
+                </button>
+
+                <div class="upload-section" id="upload-section" style="display: block;">
+                    <div class="upload-zone" id="upload-zone"
+                         ondragenter="window.handleUploadZoneDragEnter(event)"
+                         ondragleave="window.handleUploadZoneDragLeave(event)"
+                         ondragover="window.handleUploadZoneDragOver(event)"
+                         ondrop="window.handleUploadZoneDrop(event)"
+                         onclick="document.getElementById('upload-zone-input').click()">
+                        <div class="upload-zone-content">
+                            <svg width="32" height="32" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+                            </svg>
+                            <span>Drop GPX files to create polygons</span>
+                            <small>Each file creates a new polygon</small>
+                        </div>
+                        <input type="file" id="upload-zone-input" accept=".gpx" multiple style="display: none;">
+                    </div>
+                    <button id="create-group" class="btn btn-secondary" style="width: 100%;">+ Group</button>
                 </div>
-                <input type="file" id="upload-zone-input" accept=".gpx" multiple style="display: none;">
             </div>
 
             <div class="controls">
-                <div class="create-buttons">
-                    <button id="create-polygon" class="btn btn-primary">+ Polygon</button>
-                    <button id="create-group" class="btn btn-secondary">+ Group</button>
+                <!-- Settings row with Clear All -->
+                <div class="settings-row">
+                    <button id="toggle-settings-panel" class="settings-header">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"/>
+                            <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52z"/>
+                        </svg>
+                        <span>Settings & Tools</span>
+                        <svg class="chevron" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+                        </svg>
+                    </button>
+                    <button id="clear-all" class="btn btn-danger btn-small">Clear All</button>
                 </div>
-                <label class="toggle-control">
-                    <input type="checkbox" id="toggle-tracks">
-                    <span>Show GPX Tracks</span>
-                </label>
-                <label class="toggle-control">
-                    <input type="checkbox" id="toggle-group-bounds">
-                    <span>Show Group Boundaries</span>
-                </label>
-                <label class="toggle-control">
-                    <input type="checkbox" id="toggle-labels">
-                    <span>Show Labels</span>
-                </label>
-                <label class="toggle-control">
-                    <input type="checkbox" id="toggle-area">
-                    <span>Show Area on Map</span>
-                </label>
-                <button id="toggle-vertex-edit" class="btn btn-secondary">Edit Vertices</button>
-                <button id="toggle-settings" class="btn btn-secondary">Label Settings</button>
-                <button id="toggle-export" class="btn btn-secondary">Export</button>
-                <button id="clear-all" class="btn btn-danger btn-small">Clear All</button>
+
+                <!-- Collapsible Settings -->
+                <div class="settings-section">
+
+                    <div class="settings-container" id="settings-container" style="display: none;">
+                        <div class="settings-tabs">
+                            <button class="tab-button active" data-tab="display">Display</button>
+                            <button class="tab-button" data-tab="labels">Labels</button>
+                            <button class="tab-button" data-tab="edit">Edit</button>
+                            <button class="tab-button" data-tab="export">Export</button>
+                        </div>
+
+                        <!-- Display Tab -->
+                        <div class="tab-content" id="display-tab">
+                            <label class="toggle-control">
+                                <input type="checkbox" id="toggle-tracks">
+                                <span>Show GPX Tracks</span>
+                            </label>
+                            <label class="toggle-control">
+                                <input type="checkbox" id="toggle-group-bounds">
+                                <span>Show Group Boundaries</span>
+                            </label>
+                            <label class="toggle-control">
+                                <input type="checkbox" id="toggle-labels">
+                                <span>Show Labels</span>
+                            </label>
+                            <label class="toggle-control">
+                                <input type="checkbox" id="toggle-area">
+                                <span>Show Area on Map</span>
+                            </label>
+                            <div class="setting-group" style="margin-top: 0.75rem;">
+                                <label>Area Unit
+                                    <select id="area-unit" style="margin-left: auto; padding: 0.25rem;">
+                                        <option value="acres" selected>Acres</option>
+                                        <option value="hectares">Hectares</option>
+                                        <option value="sqm">Square Meters</option>
+                                        <option value="sqkm">Square Kilometers</option>
+                                        <option value="sqmi">Square Miles</option>
+                                        <option value="sqft">Square Feet</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Labels Tab -->
+                        <div class="tab-content" id="labels-tab" style="display: none;">
+                            <div class="setting-group">
+                                <label>Min Vertex Distance (px)
+                                    <span class="info-icon" title="Minimum distance between vertices before labels are grouped together. Lower values show more labels.">i</span>
+                                    <input type="range" id="min-vertex-dist" min="10" max="100" value="30" step="5" class="live-setting">
+                                    <span id="min-vertex-dist-value">30</span>
+                                </label>
+                            </div>
+
+                            <div class="setting-group">
+                                <label>Max Label Distance (px)
+                                    <span class="info-icon" title="Maximum distance a label can be pushed away from its vertex. Higher values allow more spread.">i</span>
+                                    <input type="range" id="max-label-distance" min="30" max="200" value="80" step="10" class="live-setting">
+                                    <span id="max-label-distance-value">80</span>
+                                </label>
+                            </div>
+
+                            <div class="setting-group">
+                                <label>Min Vertex Angle (degrees)
+                                    <span class="info-icon" title="Hide labels at vertices with angles shallower than this. Higher values hide more labels at gentle curves.">i</span>
+                                    <input type="range" id="min-vertex-angle" min="0" max="45" value="10" step="5" class="live-setting">
+                                    <span id="min-vertex-angle-value">10</span>
+                                </label>
+                            </div>
+
+                            <div class="setting-group">
+                                <label>Label Repulsion
+                                    <span class="info-icon" title="How aggressively labels push away from each other. Higher values reduce overlap but may stretch labels further.">i</span>
+                                    <input type="range" id="label-repulsion" min="10" max="100" value="30" step="5" class="live-setting">
+                                    <span id="label-repulsion-value">30</span>
+                                </label>
+                            </div>
+
+                            <div class="setting-group">
+                                <label>Center Repulsion
+                                    <span class="info-icon" title="How strongly labels are pushed outward from polygon centers. Higher values keep labels well outside polygons.">i</span>
+                                    <input type="range" id="center-repulsion" min="0" max="200" value="100" step="10" class="live-setting">
+                                    <span id="center-repulsion-value">100</span>
+                                </label>
+                            </div>
+
+                            <div class="setting-group">
+                                <label>Spring Strength
+                                    <span class="info-icon" title="How strongly labels are pulled back toward their vertex. Higher values keep labels closer to vertices.">i</span>
+                                    <input type="range" id="spring-strength" min="0.01" max="0.5" value="0.1" step="0.01" class="live-setting">
+                                    <span id="spring-strength-value">0.10</span>
+                                </label>
+                            </div>
+
+                            <label class="toggle-control" style="margin: 0.75rem 0;">
+                                <input type="checkbox" id="toggle-debug-fields">
+                                <span>Show Repulsion Fields</span>
+                            </label>
+
+                            <button id="reset-settings" class="btn btn-secondary" style="width: 100%; margin-top: 0.5rem;">Reset to Defaults</button>
+                        </div>
+
+                        <!-- Edit Tab -->
+                        <div class="tab-content" id="edit-tab" style="display: none;">
+                            <div class="vertex-edit-info">
+                                <p>Select a polygon to edit its vertices</p>
+                                <ul>
+                                    <li><strong>Move:</strong> Drag vertices</li>
+                                    <li><strong>Delete:</strong> Right-click vertex</li>
+                                    <li><strong>Add:</strong> Click on polygon edge</li>
+                                </ul>
+                                <select id="polygon-select" class="polygon-select">
+                                    <option value="">Select a polygon...</option>
+                                </select>
+                                <button id="exit-edit-mode" class="btn btn-secondary btn-small">Exit Edit Mode</button>
+                            </div>
+                        </div>
+
+                        <!-- Export Tab -->
+                        <div class="tab-content" id="export-tab" style="display: none;">
+                            <div class="export-buttons">
+                                <button id="export-png" class="btn btn-secondary btn-small">PNG Snapshot</button>
+                                <button id="export-kml" class="btn btn-secondary btn-small">KML</button>
+                                <button id="export-geojson" class="btn btn-secondary btn-small">GeoJSON</button>
+                                <button id="export-tracks-geojson" class="btn btn-secondary btn-small">Tracks GeoJSON</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="vertex-edit-panel" id="vertex-edit-panel" style="display: none;">
-                <h3>Vertex Editing</h3>
-                <div class="vertex-edit-info">
-                    <p>Select a polygon to edit its vertices</p>
-                    <ul>
-                        <li><strong>Move:</strong> Drag vertices</li>
-                        <li><strong>Delete:</strong> Right-click vertex</li>
-                        <li><strong>Add:</strong> Click on polygon edge</li>
-                    </ul>
-                    <select id="polygon-select" class="polygon-select">
-                        <option value="">Select a polygon...</option>
-                    </select>
-                    <button id="exit-edit-mode" class="btn btn-secondary btn-small">Exit Edit Mode</button>
-                </div>
-            </div>
-
-            <div class="export-panel" id="export-panel" style="display: none;">
-                <h3>Export Options</h3>
-                <div class="export-buttons">
-                    <button id="export-png" class="btn btn-secondary btn-small">PNG Snapshot</button>
-                    <button id="export-kml" class="btn btn-secondary btn-small">KML</button>
-                    <button id="export-geojson" class="btn btn-secondary btn-small">GeoJSON</button>
-                    <button id="export-tracks-geojson" class="btn btn-secondary btn-small">Tracks GeoJSON</button>
-                </div>
-            </div>
-
-            <div class="settings-panel" id="settings-panel" style="display: none;">
-                <h3>Label Settings</h3>
-
-                <div class="setting-group">
-                    <label>Min Vertex Distance (px)
-                        <span class="info-icon" title="Minimum distance between vertices before labels are grouped together. Lower values show more labels.">i</span>
-                        <input type="range" id="min-vertex-dist" min="10" max="100" value="30" step="5" class="live-setting">
-                        <span id="min-vertex-dist-value">30</span>
-                    </label>
-                </div>
-
-                <div class="setting-group">
-                    <label>Max Label Distance (px)
-                        <span class="info-icon" title="Maximum distance a label can be pushed away from its vertex. Higher values allow more spread.">i</span>
-                        <input type="range" id="max-label-distance" min="30" max="200" value="80" step="10" class="live-setting">
-                        <span id="max-label-distance-value">80</span>
-                    </label>
-                </div>
-
-                <div class="setting-group">
-                    <label>Min Vertex Angle (degrees)
-                        <span class="info-icon" title="Hide labels at vertices with angles shallower than this. Higher values hide more labels at gentle curves.">i</span>
-                        <input type="range" id="min-vertex-angle" min="0" max="45" value="10" step="5" class="live-setting">
-                        <span id="min-vertex-angle-value">10</span>
-                    </label>
-                </div>
-
-                <div class="setting-group">
-                    <label>Label Repulsion
-                        <span class="info-icon" title="How aggressively labels push away from each other. Higher values reduce overlap but may stretch labels further.">i</span>
-                        <input type="range" id="label-repulsion" min="10" max="100" value="30" step="5" class="live-setting">
-                        <span id="label-repulsion-value">30</span>
-                    </label>
-                </div>
-
-                <div class="setting-group">
-                    <label>Center Repulsion
-                        <span class="info-icon" title="How strongly labels are pushed outward from polygon centers. Higher values keep labels well outside polygons.">i</span>
-                        <input type="range" id="center-repulsion" min="0" max="200" value="100" step="10" class="live-setting">
-                        <span id="center-repulsion-value">100</span>
-                    </label>
-                </div>
-
-                <div class="setting-group">
-                    <label>Spring Strength
-                        <span class="info-icon" title="How strongly labels are pulled back toward their vertex. Higher values keep labels closer to vertices.">i</span>
-                        <input type="range" id="spring-strength" min="0.01" max="0.5" value="0.1" step="0.01" class="live-setting">
-                        <span id="spring-strength-value">0.10</span>
-                    </label>
-                </div>
-
-                <label class="toggle-control" style="margin: 0.75rem 0;">
-                    <input type="checkbox" id="toggle-debug-fields">
-                    <span>Show Repulsion Fields</span>
-                </label>
-
-                <div class="setting-group" style="margin-top: 0.75rem;">
-                    <label>Area Unit
-                        <select id="area-unit" style="margin-left: auto; padding: 0.25rem;">
-                            <option value="acres" selected>Acres</option>
-                            <option value="hectares">Hectares</option>
-                            <option value="sqm">Square Meters</option>
-                            <option value="sqkm">Square Kilometers</option>
-                            <option value="sqmi">Square Miles</option>
-                            <option value="sqft">Square Feet</option>
-                        </select>
-                    </label>
-                </div>
-
-                <button id="reset-settings" class="btn btn-secondary" style="width: 100%; margin-top: 0.5rem;">Reset to Defaults</button>
-            </div>
+            <!-- Old panels - to be removed -->
+            <div class="vertex-edit-panel" id="vertex-edit-panel" style="display: none;"></div>
+            <div class="export-panel" id="export-panel" style="display: none;"></div>
+            <div class="settings-panel" id="settings-panel" style="display: none;"></div>
 
             <div class="polygons-list" id="polygons-list">
                 <p class="empty-state">No polygons yet. Create one to get started!</p>

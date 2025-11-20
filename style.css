@@ -34,20 +34,33 @@ body {
 .sidebar-resize-handle {
     position: absolute;
     top: 0;
-    right: -5px;
-    width: 10px;
+    right: -8px;
+    width: 16px;
     height: 100%;
     cursor: col-resize;
     background: transparent;
     z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.sidebar-resize-handle:hover {
-    background: rgba(52, 152, 219, 0.3);
+.resize-indicator {
+    width: 4px;
+    height: 60px;
+    background: #d0d0d0;
+    border-radius: 2px;
+    transition: all 0.2s ease;
 }
 
-.sidebar-resize-handle:active {
-    background: rgba(52, 152, 219, 0.5);
+.sidebar-resize-handle:hover .resize-indicator {
+    background: #3498db;
+    height: 100px;
+}
+
+.sidebar-resize-handle:active .resize-indicator {
+    background: #2980b9;
+    width: 6px;
 }
 
 .sidebar-header {
@@ -68,9 +81,67 @@ body {
     gap: 0.5rem;
 }
 
+.btn-with-text {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.5rem 0.75rem;
+}
+
+.btn-with-text span {
+    font-size: 0.875rem;
+}
+
+/* Upload Section Wrapper */
+.upload-section-wrapper {
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.upload-section-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 1.5rem;
+    background: #f8f9fa;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #495057;
+}
+
+.upload-section-header:hover {
+    background: #e9ecef;
+}
+
+.upload-section-header.active {
+    background: #e7f3ff;
+    color: #2c3e50;
+}
+
+.upload-section-header .chevron {
+    margin-left: auto;
+    transition: transform 0.2s ease;
+}
+
+.upload-section-header.active .chevron {
+    transform: rotate(180deg);
+}
+
+/* Upload Section */
+.upload-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+    background: white;
+}
+
 .upload-zone {
+    flex: 1;
     padding: 1.5rem;
-    margin: 1rem;
     border: 2px dashed #ccc;
     border-radius: 8px;
     background: #f8f9fa;
@@ -106,6 +177,13 @@ body {
     font-size: 0.85rem;
 }
 
+.upload-zone-content small {
+    color: #999;
+    font-size: 0.75rem;
+    display: block;
+    margin-top: 0.25rem;
+}
+
 .controls {
     padding: 1rem 1.5rem;
     border-bottom: 1px solid #e0e0e0;
@@ -121,6 +199,18 @@ body {
 
 .create-buttons .btn {
     flex: 1;
+}
+
+/* Specific styles for upload section create buttons */
+.upload-section .create-buttons {
+    flex-direction: column;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.upload-section .create-buttons button {
+    white-space: nowrap;
+    width: 120px;
 }
 
 .polygons-list {
@@ -174,6 +264,134 @@ body {
 .btn-small {
     padding: 0.5rem 0.75rem;
     font-size: 0.8rem;
+}
+
+/* Settings Row */
+.settings-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.settings-row .settings-header {
+    flex: 1;
+}
+
+/* Settings Section */
+.settings-section {
+    margin-top: 0;
+}
+
+.settings-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #495057;
+}
+
+.settings-header:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+}
+
+.settings-header.active {
+    background: #e7f3ff;
+    border-color: #3498db;
+    color: #2c3e50;
+}
+
+.settings-header .chevron {
+    margin-left: auto;
+    transition: transform 0.2s ease;
+}
+
+.settings-header.active .chevron {
+    transform: rotate(180deg);
+}
+
+/* Settings Container */
+.settings-container {
+    margin-top: 0.5rem;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* Tab Navigation */
+.settings-tabs {
+    display: flex;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.tab-button {
+    flex: 1;
+    padding: 0.75rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #6c757d;
+    transition: all 0.2s ease;
+}
+
+.tab-button:hover {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.tab-button.active {
+    color: #3498db;
+    border-bottom-color: #3498db;
+    background: white;
+}
+
+/* Tab Content */
+.tab-content {
+    padding: 1rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.tab-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.tab-content::-webkit-scrollbar-thumb {
+    background: #cbd5e0;
+    border-radius: 3px;
+}
+
+.vertex-edit-info {
+    font-size: 0.85rem;
+}
+
+.vertex-edit-info ul {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+}
+
+.vertex-edit-info li {
+    margin: 0.25rem 0;
+}
+
+.export-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
 }
 
 .btn-icon {
@@ -380,10 +598,23 @@ body {
     padding: 0.75rem;
     background: #f8f9fa;
     border-bottom: 1px solid #e0e0e0;
+}
+
+.polygon-header-row {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.polygon-header-row:last-child {
+    margin-bottom: 0;
+}
+
+.polygon-actions {
+    display: flex;
+    gap: 0.25rem;
+    margin-left: auto;
 }
 
 .polygon-name {
@@ -419,14 +650,23 @@ body {
 }
 
 .track-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
     padding: 0.5rem;
     background: #f8f9fa;
     border-radius: 4px;
     margin-bottom: 0.5rem;
     font-size: 0.875rem;
+}
+
+.track-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.track-row:last-child {
+    margin-bottom: 0;
 }
 
 .track-name {
@@ -449,6 +689,7 @@ body {
     border-radius: 4px;
     font-size: 0.75rem;
     cursor: pointer;
+    width: 100%;
 }
 
 .upload-area {

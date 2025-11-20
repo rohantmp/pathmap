@@ -86,11 +86,66 @@ function init() {
         document.getElementById('session-file-input').click();
     });
     document.getElementById('session-file-input').addEventListener('change', handleUploadSession);
-    document.getElementById('toggle-vertex-edit').addEventListener('click', toggleVertexEdit);
+    // Keep old buttons for compatibility
+    if (document.getElementById('toggle-vertex-edit')) {
+        document.getElementById('toggle-vertex-edit').addEventListener('click', toggleVertexEdit);
+    }
     document.getElementById('polygon-select').addEventListener('change', handlePolygonSelect);
     document.getElementById('exit-edit-mode').addEventListener('click', exitEditMode);
-    document.getElementById('toggle-settings').addEventListener('click', toggleSettings);
-    document.getElementById('toggle-export').addEventListener('click', toggleExport);
+    if (document.getElementById('toggle-settings')) {
+        document.getElementById('toggle-settings').addEventListener('click', toggleSettings);
+    }
+    if (document.getElementById('toggle-export')) {
+        document.getElementById('toggle-export').addEventListener('click', toggleExport);
+    }
+
+    // Collapsible upload section
+    const uploadToggle = document.getElementById('toggle-upload-section');
+    const uploadSection = document.getElementById('upload-section');
+
+    if (uploadToggle && uploadSection) {
+        uploadToggle.addEventListener('click', () => {
+            const isOpen = uploadSection.style.display !== 'none';
+            uploadSection.style.display = isOpen ? 'none' : 'block';
+            uploadToggle.classList.toggle('active', !isOpen);
+        });
+    }
+
+    // New collapsible settings panel
+    const settingsToggle = document.getElementById('toggle-settings-panel');
+    const settingsContainer = document.getElementById('settings-container');
+
+    if (settingsToggle && settingsContainer) {
+        settingsToggle.addEventListener('click', () => {
+            const isOpen = settingsContainer.style.display !== 'none';
+            settingsContainer.style.display = isOpen ? 'none' : 'block';
+            settingsToggle.classList.toggle('active', !isOpen);
+        });
+    }
+
+    // Tab navigation
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const targetTab = button.dataset.tab;
+
+            // Update active tab button
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+
+            // Show corresponding content
+            tabContents.forEach(content => {
+                content.style.display = content.id === `${targetTab}-tab` ? 'block' : 'none';
+            });
+
+            // Handle special tab actions
+            if (targetTab === 'edit') {
+                populatePolygonSelect();
+            }
+        });
+    });
     document.getElementById('export-png').addEventListener('click', handleExportPNG);
     document.getElementById('export-kml').addEventListener('click', handleExportKML);
     document.getElementById('export-geojson').addEventListener('click', handleExportGeoJSON);
@@ -880,36 +935,42 @@ function renderPolygonCard(polygon, inGroup) {
          ondragover="window.handleDragOver(event)"
          ondrop="window.handleDrop(event, 'polygon', ${polygon.id})">
         <div class="polygon-header">
-            <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
-            <input type="text" class="polygon-name" value="${polygon.name}"
-                   onchange="window.renamePolygon(${polygon.id}, this.value)">
-            <input type="color" class="polygon-color" value="${polygon.color}"
-                   onchange="window.updatePolygonColor(${polygon.id}, this.value)">
-            <select class="polygon-group-select" onchange="window.assignPolygonToGroup(${polygon.id}, this.value ? parseInt(this.value) : null)">
-                <option value="">No group</option>
-                ${state.groups.map(g =>
-                    `<option value="${g.id}" ${polygon.groupId === g.id ? 'selected' : ''}>${g.name}</option>`
-                ).join('')}
-            </select>
-            <button class="btn-icon ${polygon.hidden ? 'btn-hidden-active' : ''}" onclick="window.toggleHidePolygon(${polygon.id})" title="${polygon.hidden ? 'Show' : 'Hide'}">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                    ${polygon.hidden ?
-                        '<path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/><path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.299l.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/><path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709z"/><path d="M13.646 14.354l-12-12 .708-.708 12 12-.708.708z"/>'
-                        : '<path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/><path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8zm8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/>'}
-                </svg>
-            </button>
-            <button class="btn-icon ${isFocused ? 'btn-focused' : ''}" onclick="window.toggleFocusPolygon(${polygon.id})" title="${isFocused ? 'Show All' : 'Focus'}">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                    <circle cx="8" cy="8" r="3"/>
-                    <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM2 8a6 6 0 1 1 12 0A6 6 0 0 1 2 8z"/>
-                </svg>
-            </button>
-            <button class="btn-icon btn-delete" onclick="window.deletePolygon(${polygon.id})" title="Delete Polygon">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
-                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
-                </svg>
-            </button>
+            <div class="polygon-header-row">
+                <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
+                <input type="text" class="polygon-name" value="${polygon.name}"
+                       onchange="window.renamePolygon(${polygon.id}, this.value)">
+            </div>
+            <div class="polygon-header-row">
+                <input type="color" class="polygon-color" value="${polygon.color}"
+                       onchange="window.updatePolygonColor(${polygon.id}, this.value)">
+                <select class="polygon-group-select" onchange="window.assignPolygonToGroup(${polygon.id}, this.value ? parseInt(this.value) : null)">
+                    <option value="">No group</option>
+                    ${state.groups.map(g =>
+                        `<option value="${g.id}" ${polygon.groupId === g.id ? 'selected' : ''}>${g.name}</option>`
+                    ).join('')}
+                </select>
+                <div class="polygon-actions">
+                    <button class="btn-icon ${polygon.hidden ? 'btn-hidden-active' : ''}" onclick="window.toggleHidePolygon(${polygon.id})" title="${polygon.hidden ? 'Show' : 'Hide'}">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            ${polygon.hidden ?
+                                '<path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/><path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.299l.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/><path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709z"/><path d="M13.646 14.354l-12-12 .708-.708 12 12-.708.708z"/>'
+                                : '<path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/><path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8zm8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/>'}
+                        </svg>
+                    </button>
+                    <button class="btn-icon ${isFocused ? 'btn-focused' : ''}" onclick="window.toggleFocusPolygon(${polygon.id})" title="${isFocused ? 'Show All' : 'Focus'}">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <circle cx="8" cy="8" r="3"/>
+                            <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM2 8a6 6 0 1 1 12 0A6 6 0 0 1 2 8z"/>
+                        </svg>
+                    </button>
+                    <button class="btn-icon btn-delete" onclick="window.deletePolygon(${polygon.id})" title="Delete Polygon">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                            <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
         </div>
         <div class="polygon-body"
              ondragenter="window.handleFileDragEnter(event, ${polygon.id})"
@@ -920,17 +981,19 @@ function renderPolygonCard(polygon, inGroup) {
                 ${polygon.tracks.length === 0 ? '<p class="empty-state-small">No tracks yet</p>' : ''}
                 ${polygon.tracks.map(track => `
                     <div class="track-item">
-                        <span class="track-name" title="${track.name}">${track.name}</span>
-                        <div class="track-actions">
+                        <div class="track-row">
+                            <span class="track-name" title="${track.name}">${track.name}</span>
+                            <button class="btn-icon btn-delete-small" onclick="window.deleteTrack(${polygon.id}, ${track.id})" title="Delete Track">
+                                ×
+                            </button>
+                        </div>
+                        <div class="track-row">
                             <select class="track-move-select" onchange="window.handleMoveTrack(${track.id}, ${polygon.id}, this)">
                                 <option value="">Move to...</option>
                                 ${state.polygons.filter(p => p.id !== polygon.id).map(p =>
                                     `<option value="${p.id}">${p.name}</option>`
                                 ).join('')}
                             </select>
-                            <button class="btn-icon btn-delete-small" onclick="window.deleteTrack(${polygon.id}, ${track.id})" title="Delete Track">
-                                ×
-                            </button>
                         </div>
                     </div>
                 `).join('')}
