@@ -14,6 +14,9 @@ export class LabelManager {
         this.polygonNameMarkers = new Map(); // polygonId -> marker for polygon name
         this.debugLayers = []; // Array to hold debug visualization layers
         this.showDebugFields = false; // Toggle for debug visualization
+        this.showLabels = true; // Toggle for label visibility
+        this.showAreaOnMap = false; // Toggle for showing area next to polygon name
+        this.areaFormatter = null; // Function to format area: (hull) => string
         this.isSimulating = false;
         this.simulationInterval = null;
         this.manuallyPositioned = new Set(); // Track labels that have been manually dragged
@@ -55,6 +58,43 @@ export class LabelManager {
         } else {
             this.clearDebugFields();
         }
+    }
+
+    /**
+     * Toggle coordinate label visibility (not polygon names)
+     */
+    setShowLabels(show) {
+        this.showLabels = show;
+
+        // Toggle visibility of coordinate label markers and leader lines only
+        this.labelMarkers.forEach((marker) => {
+            if (show) {
+                marker.getElement().style.display = '';
+            } else {
+                marker.getElement().style.display = 'none';
+            }
+        });
+
+        // Toggle visibility of leader lines
+        this.leaderLines.forEach(({ outline, line }) => {
+            if (show) {
+                outline.getElement().style.display = '';
+                line.getElement().style.display = '';
+            } else {
+                outline.getElement().style.display = 'none';
+                line.getElement().style.display = 'none';
+            }
+        });
+
+        // Note: Polygon name markers are NOT affected by this toggle
+    }
+
+    /**
+     * Set whether to show area on map labels
+     */
+    setShowAreaOnMap(show, areaFormatter) {
+        this.showAreaOnMap = show;
+        this.areaFormatter = areaFormatter;
     }
 
     /**
@@ -306,24 +346,24 @@ export class LabelManager {
             const dy = vertex.lat - polyCenterLat;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            // Position label outward from polygon center with vertical jitter
-            let labelLat, labelLon;
-            if (dist > 0.00001) {
-                // Push label away from center
-                labelLat = vertex.lat + (dy / dist) * initialOffset + verticalOffset;
-                labelLon = vertex.lon + (dx / dist) * initialOffset;
-            } else {
-                // Default to right if vertex is at center
-                labelLat = vertex.lat + verticalOffset;
-                labelLon = vertex.lon + initialOffset;
-            }
+            // Find optimal position for this coordinate label
+            const optimalPosition = this.findOptimalLabelPosition(
+                vertex,
+                index,
+                polygonVertices,
+                centerLat,
+                centerLon,
+                initialOffset,
+                verticalOffset,
+                pixelsToDegrees
+            );
 
             this.labels.push({
                 key,
                 polygonId,
                 vertexIndex: index,
                 vertexLatLng: vertexLatLng,
-                labelLatLng: L.latLng(labelLat, labelLon),
+                labelLatLng: L.latLng(optimalPosition.lat, optimalPosition.lon),
                 text,
                 width: labelWidth,
                 height: 30,
@@ -774,77 +814,323 @@ export class LabelManager {
     }
 
     /**
-     * Find best position for polygon name label (centroid with label avoidance)
+     * Find optimal position for a coordinate label using analytical approach
+     */
+    findOptimalLabelPosition(vertex, vertexIndex, polygonVertices, centerLat, centerLon, initialOffset, verticalOffset, pixelsToDegrees) {
+        // Get existing labels for overlap checking
+        const existingLabels = this.labels;
+
+        // Label dimensions
+        const labelWidth = pixelsToDegrees(80);
+        const labelHeight = pixelsToDegrees(25);
+        const minSeparation = pixelsToDegrees(5);
+
+        // Calculate base direction (away from polygon center)
+        const dx = vertex.lon - centerLon;
+        const dy = vertex.lat - centerLat;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // Base direction vector (normalized)
+        let dirX = dist > 0.00001 ? dx / dist : 1;
+        let dirY = dist > 0.00001 ? dy / dist : 0;
+
+        // Helper function to check overlap with existing labels
+        const hasOverlap = (pos) => {
+            for (const existing of existingLabels) {
+                // Skip if it's a label for the same vertex
+                if (Math.abs(existing.vertexLatLng.lat - vertex.lat) < 0.000001 &&
+                    Math.abs(existing.vertexLatLng.lng - vertex.lon) < 0.000001) {
+                    continue;
+                }
+
+                const dx = Math.abs(pos.lon - existing.labelLatLng.lng);
+                const dy = Math.abs(pos.lat - existing.labelLatLng.lat);
+
+                if (dx < (labelWidth + minSeparation) && dy < (labelHeight + minSeparation)) {
+                    return true;
+                }
+            }
+
+            // Also check overlap with polygon name markers
+            this.polygonNameMarkers.forEach((marker) => {
+                const markerPos = marker.getLatLng();
+                const dx = Math.abs(pos.lon - markerPos.lng);
+                const dy = Math.abs(pos.lat - markerPos.lat);
+
+                if (dx < (labelWidth + pixelsToDegrees(20)) && dy < (labelHeight + pixelsToDegrees(20))) {
+                    return true;
+                }
+            });
+
+            return false;
+        };
+
+        // Helper to check if position is inside polygon
+        const isInsidePolygon = (pos) => {
+            let inside = false;
+            const x = pos.lon;
+            const y = pos.lat;
+
+            for (let i = 0, j = polygonVertices.length - 1; i < polygonVertices.length; j = i++) {
+                const xi = polygonVertices[i].lon;
+                const yi = polygonVertices[i].lat;
+                const xj = polygonVertices[j].lon;
+                const yj = polygonVertices[j].lat;
+
+                const intersect = ((yi > y) !== (yj > y))
+                    && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+
+                if (intersect) inside = !inside;
+            }
+
+            return inside;
+        };
+
+        // Score function for positions
+        const scorePosition = (pos) => {
+            if (hasOverlap(pos)) {
+                return -Infinity;
+            }
+
+            // Strong preference for being outside the polygon
+            const outsideBonus = isInsidePolygon(pos) ? -500 : 1000;
+
+            // Prefer optimal distance from vertex
+            const distFromVertex = Math.sqrt(
+                Math.pow(pos.lat - vertex.lat, 2) +
+                Math.pow(pos.lon - vertex.lon, 2)
+            );
+            const optimalDist = initialOffset;
+            const distScore = 100 / (1 + Math.abs(distFromVertex - optimalDist) * 1000);
+
+            // Prefer positions in the base direction
+            const dotProduct = (pos.lon - vertex.lon) * dirX + (pos.lat - vertex.lat) * dirY;
+            const directionScore = dotProduct > 0 ? 200 : -200;
+
+            return outsideBonus + distScore + directionScore;
+        };
+
+        // Try different positions around the vertex
+        let bestPosition = null;
+        let bestScore = -Infinity;
+
+        // Generate candidate positions in a circular pattern
+        const distances = [initialOffset, initialOffset * 0.7, initialOffset * 1.3, initialOffset * 1.6];
+        const angles = 16; // Number of directions to try
+
+        for (const distance of distances) {
+            for (let i = 0; i < angles; i++) {
+                const angle = (2 * Math.PI * i) / angles;
+
+                // Create candidate position
+                const candidate = {
+                    lat: vertex.lat + distance * Math.sin(angle) + (i % 2 ? verticalOffset : -verticalOffset),
+                    lon: vertex.lon + distance * Math.cos(angle)
+                };
+
+                const score = scorePosition(candidate);
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestPosition = candidate;
+
+                    // If we found a great position, we can stop
+                    if (score > 1500) {
+                        break;
+                    }
+                }
+            }
+
+            if (bestScore > 1500) {
+                break;
+            }
+        }
+
+        // Fallback: if no good position found, use original simple positioning
+        if (!bestPosition || bestScore === -Infinity) {
+            bestPosition = {
+                lat: vertex.lat + dirY * initialOffset + verticalOffset,
+                lon: vertex.lon + dirX * initialOffset
+            };
+        }
+
+        return bestPosition;
+    }
+
+    /**
+     * Find best position for polygon name label using analytical grid search
      */
     findPolygonNamePosition(polygon, polygonLabels) {
         if (!polygon.hull || polygon.hull.length === 0) {
             return null;
         }
 
-        // Calculate polygon centroid
+        // Calculate polygon centroid (center of mass)
         const centerLat = polygon.hull.reduce((sum, v) => sum + v.lat, 0) / polygon.hull.length;
         const centerLon = polygon.hull.reduce((sum, v) => sum + v.lon, 0) / polygon.hull.length;
 
         const bounds = this.map.getBounds();
-
         const zoom = this.map.getZoom();
         const metersPerPixel = 156543.03392 * Math.cos(centerLat * Math.PI / 180) / Math.pow(2, zoom);
         const pixelsToDegrees = (pixels) => (metersPerPixel * pixels) / 111320;
 
-        // Check distance to all labels
-        const minClearance = pixelsToDegrees(60); // 60px clearance from labels
+        // Get existing polygon name positions for overlap checking
+        const existingNames = Array.from(this.polygonNameMarkers.values());
+        const existingPositions = existingNames.map(marker => marker.getLatLng());
+
+        // Label dimensions in degrees (approximate)
+        const labelWidth = pixelsToDegrees(100);  // Approximate label width
+        const labelHeight = pixelsToDegrees(30);  // Approximate label height
+        const minSeparation = pixelsToDegrees(10); // Minimum gap between labels
+
+        // Helper function to check if a position overlaps with existing labels
+        const hasOverlap = (pos) => {
+            for (const existing of existingPositions) {
+                const dx = Math.abs(pos.lon - existing.lng);
+                const dy = Math.abs(pos.lat - existing.lat);
+
+                // Check rectangular overlap with separation
+                if (dx < (labelWidth + minSeparation) && dy < (labelHeight + minSeparation)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        // Helper function to check if position is inside polygon
+        const isInsidePolygon = (pos) => {
+            let inside = false;
+            const x = pos.lon;
+            const y = pos.lat;
+
+            for (let i = 0, j = polygon.hull.length - 1; i < polygon.hull.length; j = i++) {
+                const xi = polygon.hull[i].lon;
+                const yi = polygon.hull[i].lat;
+                const xj = polygon.hull[j].lon;
+                const yj = polygon.hull[j].lat;
+
+                const intersect = ((yi > y) !== (yj > y))
+                    && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+
+                if (intersect) inside = !inside;
+            }
+
+            return inside;
+        };
+
+        // Helper function to calculate score for a position
+        const scorePosition = (pos) => {
+            // Check if within bounds
+            if (!bounds.contains(L.latLng(pos.lat, pos.lon))) {
+                return -Infinity;
+            }
+
+            // Check for overlaps
+            if (hasOverlap(pos)) {
+                return -Infinity;
+            }
+
+            // Prefer positions inside the polygon
+            const insideBonus = isInsidePolygon(pos) ? 1000 : 0;
+
+            // Prefer positions close to centroid
+            const distFromCenter = Math.sqrt(
+                Math.pow(pos.lat - centerLat, 2) +
+                Math.pow(pos.lon - centerLon, 2)
+            );
+            const centerScore = 100 / (1 + distFromCenter * 1000);
+
+            // Calculate minimum distance to other labels (prefer more separation)
+            let minDist = Infinity;
+            for (const existing of existingPositions) {
+                const dist = Math.sqrt(
+                    Math.pow(pos.lat - existing.lat, 2) +
+                    Math.pow(pos.lon - existing.lng, 2)
+                );
+                minDist = Math.min(minDist, dist);
+            }
+            const separationScore = minDist * 100;
+
+            return insideBonus + centerScore + separationScore;
+        };
+
+        // Start with centroid
         let bestPosition = { lat: centerLat, lon: centerLon };
-        let maxClearance = 0;
+        let bestScore = scorePosition(bestPosition);
 
-        // Try multiple candidate positions around the centroid
-        const candidates = [
-            { lat: centerLat, lon: centerLon }, // Center
-            { lat: centerLat + pixelsToDegrees(40), lon: centerLon }, // North
-            { lat: centerLat - pixelsToDegrees(40), lon: centerLon }, // South
-            { lat: centerLat, lon: centerLon + pixelsToDegrees(40) }, // East
-            { lat: centerLat, lon: centerLon - pixelsToDegrees(40) }, // West
-        ];
+        // If centroid doesn't work, search in expanding rings
+        if (bestScore === -Infinity) {
+            const maxRadius = pixelsToDegrees(200); // Max search radius
+            const stepSize = pixelsToDegrees(20);   // Grid step size
 
-        // Filter candidates to those within map bounds
-        const visibleCandidates = candidates.filter(c => bounds.contains(L.latLng(c.lat, c.lon)));
+            // Search in a grid pattern around the centroid
+            for (let radius = stepSize; radius <= maxRadius; radius += stepSize) {
+                // Number of points in this ring
+                const numAngles = Math.max(8, Math.floor(2 * Math.PI * radius / stepSize));
 
-        // If no candidates are visible but polygon is partially visible,
-        // clamp the centroid to be within bounds
-        let candidatesToCheck;
-        if (visibleCandidates.length > 0) {
-            candidatesToCheck = visibleCandidates;
-        } else {
-            // Clamp centroid to visible area with padding
-            const padding = pixelsToDegrees(50);
-            const clampedLat = Math.max(
-                bounds.getSouth() + padding,
-                Math.min(bounds.getNorth() - padding, centerLat)
-            );
-            const clampedLon = Math.max(
-                bounds.getWest() + padding,
-                Math.min(bounds.getEast() - padding, centerLon)
-            );
-            candidatesToCheck = [{ lat: clampedLat, lon: clampedLon }];
+                for (let i = 0; i < numAngles; i++) {
+                    const angle = (2 * Math.PI * i) / numAngles;
+                    const candidate = {
+                        lat: centerLat + radius * Math.sin(angle),
+                        lon: centerLon + radius * Math.cos(angle)
+                    };
+
+                    const score = scorePosition(candidate);
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestPosition = candidate;
+
+                        // If we found a good position inside the polygon, we can stop
+                        if (score > 1000) {
+                            break;
+                        }
+                    }
+                }
+
+                // If we found a valid position, we can stop expanding
+                if (bestScore > -Infinity) {
+                    break;
+                }
+            }
         }
 
-        candidatesToCheck.forEach(candidate => {
-            // Calculate minimum distance to any label
-            let minDist = Infinity;
-            this.labels.forEach(label => {
-                const dx = candidate.lon - label.labelLatLng.lng;
-                const dy = candidate.lat - label.labelLatLng.lat;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                minDist = Math.min(minDist, dist);
-            });
-
-            // Pick candidate with most clearance
-            if (minDist > maxClearance) {
-                maxClearance = minDist;
-                bestPosition = candidate;
-            }
-        });
+        // Final fallback: if no good position found, place at clamped centroid
+        if (bestScore === -Infinity) {
+            const padding = pixelsToDegrees(30);
+            bestPosition = {
+                lat: Math.max(
+                    bounds.getSouth() + padding,
+                    Math.min(bounds.getNorth() - padding, centerLat)
+                ),
+                lon: Math.max(
+                    bounds.getWest() + padding,
+                    Math.min(bounds.getEast() - padding, centerLon)
+                )
+            };
+        }
 
         return bestPosition;
+    }
+
+    /**
+     * Check if any part of a polygon is within the current map bounds
+     */
+    isPolygonInView(polygon, bounds) {
+        if (!polygon.hull || polygon.hull.length === 0) {
+            return false;
+        }
+
+        // Check if any vertex of the polygon is within bounds
+        for (const vertex of polygon.hull) {
+            if (bounds.contains([vertex.lat, vertex.lon])) {
+                return true;
+            }
+        }
+
+        // Check if polygon bounds intersect with map bounds
+        const polygonBounds = L.latLngBounds(polygon.hull.map(v => [v.lat, v.lon]));
+        return bounds.intersects(polygonBounds);
     }
 
     /**
@@ -857,15 +1143,30 @@ export class LabelManager {
         });
         this.polygonNameMarkers.clear();
 
+        // Get current map bounds
+        const bounds = this.map.getBounds();
+
         // Add polygon name labels
         polygons.forEach(polygon => {
+            // Check if any part of the polygon is in view
+            if (!this.isPolygonInView(polygon, bounds)) {
+                return; // Skip this polygon if it's not visible
+            }
+
             const position = this.findPolygonNamePosition(polygon, this.labels.filter(l => l.polygonId === polygon.id));
 
             if (position && polygon.name) {
+                // Build label content with optional area
+                let labelHtml = polygon.name;
+                if (this.showAreaOnMap && this.areaFormatter && polygon.hull) {
+                    const areaText = this.areaFormatter(polygon.hull);
+                    labelHtml += `<br><span class="polygon-area-label">${areaText}</span>`;
+                }
+
                 const marker = L.marker([position.lat, position.lon], {
                     icon: L.divIcon({
                         className: 'polygon-name-label',
-                        html: `<div class="polygon-name-content" style="color: ${polygon.color}">${polygon.name}</div>`,
+                        html: `<div class="polygon-name-content" style="color: ${polygon.color}">${labelHtml}</div>`,
                         iconSize: null,
                         iconAnchor: [0, 0]
                     }),
@@ -909,6 +1210,12 @@ export class LabelManager {
                 }).addTo(this.map);
 
                 this.leaderLines.set(key, { outline, line });
+
+                // Hide if labels are disabled
+                if (!this.showLabels) {
+                    outline.getElement().style.display = 'none';
+                    line.getElement().style.display = 'none';
+                }
             } else {
                 lines.outline.setLatLngs(lineCoords);
                 lines.line.setLatLngs(lineCoords);
@@ -956,6 +1263,11 @@ export class LabelManager {
                 });
 
                 this.labelMarkers.set(key, marker);
+
+                // Hide if labels are disabled
+                if (!this.showLabels) {
+                    marker.getElement().style.display = 'none';
+                }
             } else {
                 marker.setLatLng([label.labelLatLng.lat, label.labelLatLng.lng]);
             }

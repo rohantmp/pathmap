@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 
 export default defineConfig({
+  base: '/pathmap/',  // GitHub repository name
   plugins: [viteSingleFile()],
   build: {
     target: 'esnext',

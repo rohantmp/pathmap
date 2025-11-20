@@ -37,6 +37,18 @@ function getNextColor() {
 function init() {
     mapManager = new MapManager('map');
 
+    // Sync label visibility with checkbox state
+    const showLabelsCheckbox = document.getElementById('toggle-labels');
+    if (showLabelsCheckbox) {
+        mapManager.labelManager.setShowLabels(showLabelsCheckbox.checked);
+    }
+
+    // Sync area visibility with checkbox state
+    const showAreaCheckbox = document.getElementById('toggle-area');
+    if (showAreaCheckbox) {
+        mapManager.setShowAreaOnMap(showAreaCheckbox.checked);
+    }
+
     // Load saved session
     const savedState = loadFromLocalStorage();
     if (savedState) {
@@ -61,15 +73,22 @@ function init() {
     // Set up event listeners
     document.getElementById('create-polygon').addEventListener('click', createPolygon);
     document.getElementById('create-group').addEventListener('click', createGroup);
+    document.getElementById('upload-zone-input').addEventListener('change', handleUploadZoneChange);
     document.getElementById('toggle-tracks').addEventListener('change', handleToggleTracks);
     document.getElementById('toggle-group-bounds').addEventListener('change', handleToggleGroupBounds);
+    document.getElementById('toggle-labels').addEventListener('change', handleToggleLabels);
+    document.getElementById('toggle-area').addEventListener('change', handleToggleArea);
     document.getElementById('toggle-debug-fields').addEventListener('change', handleToggleDebugFields);
+    document.getElementById('clear-all').addEventListener('click', handleClearAll);
     document.getElementById('area-unit').addEventListener('change', handleAreaUnitChange);
     document.getElementById('download-session').addEventListener('click', handleDownloadSession);
     document.getElementById('upload-session').addEventListener('click', () => {
         document.getElementById('session-file-input').click();
     });
     document.getElementById('session-file-input').addEventListener('change', handleUploadSession);
+    document.getElementById('toggle-vertex-edit').addEventListener('click', toggleVertexEdit);
+    document.getElementById('polygon-select').addEventListener('change', handlePolygonSelect);
+    document.getElementById('exit-edit-mode').addEventListener('click', exitEditMode);
     document.getElementById('toggle-settings').addEventListener('click', toggleSettings);
     document.getElementById('toggle-export').addEventListener('click', toggleExport);
     document.getElementById('export-png').addEventListener('click', handleExportPNG);
@@ -81,6 +100,74 @@ function init() {
     setupSettingsSliders();
 
     renderPolygonList();
+}
+
+function toggleVertexEdit() {
+    const panel = document.getElementById('vertex-edit-panel');
+    const isVisible = panel.style.display !== 'none';
+
+    if (isVisible) {
+        // Close panel and exit edit mode
+        panel.style.display = 'none';
+        mapManager.exitEditMode();
+    } else {
+        // Open panel and populate polygon list
+        panel.style.display = 'block';
+        populatePolygonSelect();
+    }
+}
+
+function populatePolygonSelect() {
+    const select = document.getElementById('polygon-select');
+    select.innerHTML = '<option value="">Select a polygon...</option>';
+
+    state.polygons.forEach(polygon => {
+        if (polygon.hull && polygon.hull.length >= 3) {
+            const option = document.createElement('option');
+            option.value = polygon.id;
+            option.textContent = polygon.name;
+            select.appendChild(option);
+        }
+    });
+}
+
+function handlePolygonSelect(event) {
+    const polygonId = parseInt(event.target.value);
+    if (!polygonId) {
+        mapManager.exitEditMode();
+        return;
+    }
+
+    const polygon = state.polygons.find(p => p.id === polygonId);
+    if (!polygon) return;
+
+    // Enter edit mode
+    mapManager.enterEditMode(polygonId, polygon, (id, newVertices) => {
+        // Update polygon hull with new vertices
+        const poly = state.polygons.find(p => p.id === id);
+        if (poly) {
+            poly.hull = newVertices;
+            updatePolygonOnMap(poly);
+
+            // Recreate midpoint markers
+            mapManager.createMidpointMarkers(poly);
+
+            // Save state
+            saveState();
+        }
+    });
+
+    // Zoom to polygon
+    if (polygon.hull && polygon.hull.length > 0) {
+        const bounds = L.latLngBounds(polygon.hull.map(v => [v.lat, v.lon]));
+        mapManager.map.fitBounds(bounds, { padding: [50, 50] });
+    }
+}
+
+function exitEditMode() {
+    mapManager.exitEditMode();
+    document.getElementById('polygon-select').value = '';
+    document.getElementById('vertex-edit-panel').style.display = 'none';
 }
 
 function toggleExport() {
@@ -225,6 +312,104 @@ function createGroup() {
     state.groups.push(group);
     renderPolygonList();
     saveState();
+}
+
+async function processGPXFiles(files) {
+    if (!files || files.length === 0) return;
+
+    const errors = [];
+
+    for (const file of files) {
+        try {
+            // Parse GPX file
+            const points = await parseGPXFile(file);
+            const name = await getGPXName(file);
+
+            // Create new polygon for this file
+            const polygon = {
+                id: state.nextPolygonId++,
+                name: name,
+                color: getNextColor(),
+                tracks: [{
+                    id: Date.now() + Math.random(),
+                    name: name,
+                    points: points
+                }],
+                hull: null,
+                groupId: null,
+                hidden: false
+            };
+
+            // Compute hull and add to state
+            updatePolygonHull(polygon);
+            state.polygons.push(polygon);
+            updatePolygonOnMap(polygon);
+
+        } catch (error) {
+            console.error(`Error processing ${file.name}:`, error);
+            errors.push(`${file.name}: ${error.message}`);
+        }
+    }
+
+    renderPolygonList();
+    saveState();
+
+    // Show errors if any
+    if (errors.length > 0) {
+        const successCount = files.length - errors.length;
+        alert(`Created ${successCount} polygon(s).\n\nErrors:\n${errors.join('\n')}`);
+    }
+}
+
+async function handleUploadZoneChange(event) {
+    await processGPXFiles(Array.from(event.target.files));
+    event.target.value = '';
+}
+
+function handleUploadZoneDragEnter(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer.types.includes('Files')) {
+        event.currentTarget.classList.add('file-drop-active');
+    }
+}
+
+function handleUploadZoneDragLeave(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const zone = event.currentTarget;
+    if (!zone.contains(event.relatedTarget)) {
+        zone.classList.remove('file-drop-active');
+    }
+}
+
+function handleUploadZoneDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer.types.includes('Files')) {
+        event.dataTransfer.dropEffect = 'copy';
+    }
+}
+
+async function handleUploadZoneDrop(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.classList.remove('file-drop-active');
+
+    const files = event.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    // Filter for GPX files
+    const gpxFiles = Array.from(files).filter(file =>
+        file.name.toLowerCase().endsWith('.gpx')
+    );
+
+    if (gpxFiles.length === 0) {
+        alert('Please drop GPX files (.gpx)');
+        return;
+    }
+
+    await processGPXFiles(gpxFiles);
 }
 
 function toggleHidePolygon(polygonId) {
@@ -573,6 +758,43 @@ function handleToggleDebugFields(event) {
     mapManager.labelManager.toggleDebugFields(showDebug);
 }
 
+function handleToggleLabels(event) {
+    const showLabels = event.target.checked;
+    mapManager.setShowLabels(showLabels);
+}
+
+function handleToggleArea(event) {
+    const showArea = event.target.checked;
+    mapManager.setShowAreaOnMap(showArea);
+}
+
+function handleClearAll() {
+    if (state.polygons.length === 0 && state.groups.length === 0) {
+        return;
+    }
+
+    if (!confirm('Are you sure you want to clear all polygons and groups?')) {
+        return;
+    }
+
+    // Clear all polygons from map
+    state.polygons.forEach(polygon => {
+        mapManager.removePolygon(polygon.id);
+    });
+
+    // Clear all group boundaries
+    mapManager.clearGroupBoundaries();
+
+    // Reset state
+    state.polygons = [];
+    state.groups = [];
+    state.focusedPolygonId = null;
+    state.focusedGroupId = null;
+
+    renderPolygonList();
+    saveState();
+}
+
 function handleAreaUnitChange(event) {
     const unit = event.target.value;
     mapManager.setAreaUnit(unit);
@@ -689,7 +911,11 @@ function renderPolygonCard(polygon, inGroup) {
                 </svg>
             </button>
         </div>
-        <div class="polygon-body">
+        <div class="polygon-body"
+             ondragenter="window.handleFileDragEnter(event, ${polygon.id})"
+             ondragleave="window.handleFileDragLeave(event)"
+             ondragover="window.handleFileDragOver(event)"
+             ondrop="window.handleFileDrop(event, ${polygon.id})">
             <div class="tracks-list">
                 ${polygon.tracks.length === 0 ? '<p class="empty-state-small">No tracks yet</p>' : ''}
                 ${polygon.tracks.map(track => `
@@ -807,6 +1033,67 @@ async function handleUploadSession(event) {
 // Drag and drop state
 let dragData = null;
 
+// File drag and drop handlers
+function handleFileDragEnter(event, polygonId) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Only show feedback if files are being dragged
+    if (event.dataTransfer.types.includes('Files')) {
+        const polygonBody = event.currentTarget;
+        polygonBody.classList.add('file-drop-active');
+    }
+}
+
+function handleFileDragLeave(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Only remove if we're leaving the actual element, not entering a child
+    const polygonBody = event.currentTarget;
+    const relatedTarget = event.relatedTarget;
+
+    if (!polygonBody.contains(relatedTarget)) {
+        polygonBody.classList.remove('file-drop-active');
+    }
+}
+
+function handleFileDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Set the drop effect for files
+    if (event.dataTransfer.types.includes('Files')) {
+        event.dataTransfer.dropEffect = 'copy';
+    }
+}
+
+async function handleFileDrop(event, polygonId) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Remove visual feedback
+    const polygonBody = event.currentTarget;
+    polygonBody.classList.remove('file-drop-active');
+
+    // Get dropped files
+    const files = event.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    // Filter for GPX files
+    const gpxFiles = Array.from(files).filter(file =>
+        file.name.toLowerCase().endsWith('.gpx')
+    );
+
+    if (gpxFiles.length === 0) {
+        alert('Please drop GPX files (.gpx)');
+        return;
+    }
+
+    // Use existing upload handler
+    await handleGPXUpload(polygonId, gpxFiles);
+}
+
 function handleDragStart(event, type, id) {
     event.stopPropagation(); // Prevent polygon drag from triggering group drag
     dragData = { type, id };
@@ -912,10 +1199,110 @@ window.handleDragStart = handleDragStart;
 window.handleDragEnd = handleDragEnd;
 window.handleDragOver = handleDragOver;
 window.handleDrop = handleDrop;
+window.handleFileDragEnter = handleFileDragEnter;
+window.handleFileDragLeave = handleFileDragLeave;
+window.handleFileDragOver = handleFileDragOver;
+window.handleFileDrop = handleFileDrop;
+window.handleUploadZoneDragEnter = handleUploadZoneDragEnter;
+window.handleUploadZoneDragLeave = handleUploadZoneDragLeave;
+window.handleUploadZoneDragOver = handleUploadZoneDragOver;
+window.handleUploadZoneDrop = handleUploadZoneDrop;
+
+// Sidebar resize functionality
+function initSidebarResize() {
+    const sidebar = document.getElementById('sidebar');
+    const resizeHandle = document.getElementById('sidebar-resize-handle');
+    const mapContainer = document.querySelector('.map-container');
+
+    if (!resizeHandle || !sidebar) return;
+
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    resizeHandle.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        startX = e.clientX;
+        startWidth = sidebar.offsetWidth;
+
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+
+        const newWidth = startWidth + (e.clientX - startX);
+        const minWidth = 280;
+        const maxWidth = 600;
+
+        if (newWidth >= minWidth && newWidth <= maxWidth) {
+            sidebar.style.width = newWidth + 'px';
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    });
+}
+
+// Mobile menu toggle functionality
+function initMobileMenu() {
+    const sidebar = document.getElementById('sidebar');
+    const menuToggle = document.getElementById('mobile-menu-toggle');
+    const overlay = document.getElementById('mobile-overlay');
+
+    if (!menuToggle || !sidebar || !overlay) return;
+
+    menuToggle.addEventListener('click', () => {
+        sidebar.classList.toggle('active');
+        overlay.classList.toggle('active');
+    });
+
+    overlay.addEventListener('click', () => {
+        sidebar.classList.remove('active');
+        overlay.classList.remove('active');
+    });
+
+    // Close sidebar when selecting a polygon or performing actions on mobile
+    if (window.innerWidth <= 768) {
+        // Add click handlers to important actions that should close the sidebar
+        const closeOnClick = [
+            'create-polygon',
+            'create-group',
+            'polygon-select',
+            'exit-edit-mode'
+        ];
+
+        closeOnClick.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.addEventListener('click', () => {
+                    setTimeout(() => {
+                        sidebar.classList.remove('active');
+                        overlay.classList.remove('active');
+                    }, 100);
+                });
+            }
+        });
+    }
+}
 
 // Initialize on DOM ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', () => {
+        init();
+        initSidebarResize();
+        initMobileMenu();
+    });
 } else {
     init();
+    initSidebarResize();
+    initMobileMenu();
 }

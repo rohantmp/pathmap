@@ -4,11 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PathMap - GPX Track Mapping</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>">
     <link rel="stylesheet" href="./style.css">
 </head>
 <body>
     <div class="container">
-        <aside class="sidebar">
+        <div class="mobile-overlay" id="mobile-overlay"></div>
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-resize-handle" id="sidebar-resize-handle"></div>
             <div class="sidebar-header">
                 <h1>PathMap</h1>
                 <div class="session-controls">
@@ -28,6 +31,22 @@
                 </div>
             </div>
 
+            <div class="upload-zone" id="upload-zone"
+                 ondragenter="window.handleUploadZoneDragEnter(event)"
+                 ondragleave="window.handleUploadZoneDragLeave(event)"
+                 ondragover="window.handleUploadZoneDragOver(event)"
+                 ondrop="window.handleUploadZoneDrop(event)"
+                 onclick="document.getElementById('upload-zone-input').click()">
+                <div class="upload-zone-content">
+                    <svg width="32" height="32" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                        <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+                    </svg>
+                    <span>Drop GPX files here or click to upload</span>
+                </div>
+                <input type="file" id="upload-zone-input" accept=".gpx" multiple style="display: none;">
+            </div>
+
             <div class="controls">
                 <div class="create-buttons">
                     <button id="create-polygon" class="btn btn-primary">+ Polygon</button>
@@ -41,8 +60,34 @@
                     <input type="checkbox" id="toggle-group-bounds">
                     <span>Show Group Boundaries</span>
                 </label>
+                <label class="toggle-control">
+                    <input type="checkbox" id="toggle-labels">
+                    <span>Show Labels</span>
+                </label>
+                <label class="toggle-control">
+                    <input type="checkbox" id="toggle-area">
+                    <span>Show Area on Map</span>
+                </label>
+                <button id="toggle-vertex-edit" class="btn btn-secondary">Edit Vertices</button>
                 <button id="toggle-settings" class="btn btn-secondary">Label Settings</button>
                 <button id="toggle-export" class="btn btn-secondary">Export</button>
+                <button id="clear-all" class="btn btn-danger btn-small">Clear All</button>
+            </div>
+
+            <div class="vertex-edit-panel" id="vertex-edit-panel" style="display: none;">
+                <h3>Vertex Editing</h3>
+                <div class="vertex-edit-info">
+                    <p>Select a polygon to edit its vertices</p>
+                    <ul>
+                        <li><strong>Move:</strong> Drag vertices</li>
+                        <li><strong>Delete:</strong> Right-click vertex</li>
+                        <li><strong>Add:</strong> Click on polygon edge</li>
+                    </ul>
+                    <select id="polygon-select" class="polygon-select">
+                        <option value="">Select a polygon...</option>
+                    </select>
+                    <button id="exit-edit-mode" class="btn btn-secondary btn-small">Exit Edit Mode</button>
+                </div>
             </div>
 
             <div class="export-panel" id="export-panel" style="display: none;">
@@ -133,6 +178,13 @@
         </aside>
 
         <main class="map-container">
+            <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle menu">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
             <div id="map"></div>
         </main>
     </div>
