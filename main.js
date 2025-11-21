@@ -71,7 +71,6 @@ function init() {
     }
 
     // Set up event listeners
-    document.getElementById('create-polygon').addEventListener('click', createPolygon);
     document.getElementById('create-group').addEventListener('click', createGroup);
     document.getElementById('upload-zone-input').addEventListener('change', handleUploadZoneChange);
     document.getElementById('toggle-tracks').addEventListener('change', handleToggleTracks);
