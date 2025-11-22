@@ -91,8 +91,13 @@ export class MapManager {
 
     /**
      * Add or update a polygon on the map
+     * @param {number} polygonId - Unique polygon identifier
+     * @param {Array} hull - Array of {lat, lon} points
+     * @param {string} color - Hex color string
+     * @param {string} name - Polygon name
+     * @param {boolean} skipFitBounds - If true, don't adjust map view
      */
-    addPolygon(polygonId, hull, color, name = '') {
+    addPolygon(polygonId, hull, color, name = '', skipFitBounds = false) {
         // Remove existing layers for this polygon
         this.removePolygon(polygonId);
 
@@ -136,7 +141,7 @@ export class MapManager {
         this.refreshAllLabels();
 
         // Fit map to show all polygons (but not during edit mode)
-        if (!this.editMode) {
+        if (!this.editMode && !skipFitBounds) {
             this.fitBounds();
         }
     }

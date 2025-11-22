@@ -449,6 +449,31 @@ body {
     color: #e74c3c;
 }
 
+/* Transliteration Button */
+.btn-transliterate {
+    padding: 0.25rem;
+    margin-left: 0.25rem;
+    flex-shrink: 0;
+}
+
+.btn-transliterate:hover {
+    color: #3498db;
+}
+
+.btn-transliterate-small {
+    background: transparent;
+    border: none;
+    color: #7f8c8d;
+    cursor: pointer;
+    padding: 0.15rem;
+    margin-left: 0.25rem;
+    flex-shrink: 0;
+}
+
+.btn-transliterate-small:hover {
+    color: #3498db;
+}
+
 /* Drag Handle */
 .drag-handle {
     cursor: grab;

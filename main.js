@@ -4,6 +4,7 @@ import { parseGPXFile, getGPXName } from './gpx-parser.js';
 import { mergeConvexHulls } from './convex-hull.js';
 import { saveToLocalStorage, loadFromLocalStorage, downloadSession, uploadSession } from './storage.js';
 import { exportPNG, exportKML, exportGeoJSON, exportTracksGeoJSON } from './export.js';
+import { transliterateSimplified, detectScript } from './transliteration.js';
 
 // Application state
 let state = {
@@ -613,7 +614,7 @@ function updatePolygonColor(polygonId, color) {
     const polygon = state.polygons.find(p => p.id === polygonId);
     if (polygon) {
         polygon.color = color;
-        updatePolygonOnMap(polygon);
+        updatePolygonOnMap(polygon, true); // Skip fitBounds for color-only changes
         saveState();
     }
 }
@@ -622,6 +623,33 @@ function renamePolygon(polygonId, newName) {
     const polygon = state.polygons.find(p => p.id === polygonId);
     if (polygon) {
         polygon.name = newName;
+        renderPolygonList();
+        saveState();
+    }
+}
+
+function transliteratePolygonName(polygonId) {
+    const polygon = state.polygons.find(p => p.id === polygonId);
+    if (polygon) {
+        const { result } = transliterateSimplified(polygon.name);
+        // Only update if we get a valid result
+        if (result && result.trim()) {
+            polygon.name = result;
+            updatePolygonOnMap(polygon, true); // Skip fitBounds for name-only changes
+            renderPolygonList();
+            saveState();
+        }
+    }
+}
+
+function transliterateTrackName(polygonId, trackId) {
+    const polygon = state.polygons.find(p => p.id === polygonId);
+    if (!polygon) return;
+
+    const track = polygon.tracks.find(t => t.id === trackId);
+    if (track) {
+        const { result } = transliterateSimplified(track.name);
+        track.name = result;
         renderPolygonList();
         saveState();
     }
@@ -694,9 +722,9 @@ function updatePolygonHull(polygon) {
     polygon.hull = mergeConvexHulls(allPointArrays);
 }
 
-function updatePolygonOnMap(polygon) {
+function updatePolygonOnMap(polygon, skipFitBounds = false) {
     if (polygon.hull && polygon.hull.length >= 3) {
-        mapManager.addPolygon(polygon.id, polygon.hull, polygon.color, polygon.name);
+        mapManager.addPolygon(polygon.id, polygon.hull, polygon.color, polygon.name, skipFitBounds);
 
         if (mapManager.showTracks) {
             mapManager.addTracks(polygon.id, polygon.tracks, polygon.color);
@@ -938,6 +966,12 @@ function renderPolygonCard(polygon, inGroup) {
                 <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
                 <input type="text" class="polygon-name" value="${polygon.name}"
                        onchange="window.renamePolygon(${polygon.id}, this.value)">
+                <button class="btn-icon btn-transliterate" onclick="window.transliteratePolygonName(${polygon.id})" title="Transliterate (Tamil ↔ Latin)">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M4.545 6.714L4.11 8H3l1.862-5h1.284L8 8H6.833l-.435-1.286H4.545zm1.634-.736L5.5 3.956h-.049l-.679 2.022H6.18z"/>
+                        <path d="M0 2a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v3h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-3H2a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h3V7a2 2 0 0 1 2-2h3V2a1 1 0 0 0-1-1H2zm7.138 9.995c.193.301.402.583.63.846-.748.575-1.673 1.001-2.768 1.292.178.217.451.635.555.867 1.125-.359 2.08-.844 2.886-1.494.777.665 1.739 1.165 2.93 1.472.133-.254.414-.673.629-.89-1.125-.253-2.057-.694-2.82-1.284.681-.747 1.222-1.651 1.621-2.757H14V8h-3v1.047h.765c-.318.844-.74 1.546-1.272 2.13a6.066 6.066 0 0 1-.415-.492 1.988 1.988 0 0 1-.94.31z"/>
+                    </svg>
+                </button>
             </div>
             <div class="polygon-header-row">
                 <input type="color" class="polygon-color" value="${polygon.color}"
@@ -982,6 +1016,12 @@ function renderPolygonCard(polygon, inGroup) {
                     <div class="track-item">
                         <div class="track-row">
                             <span class="track-name" title="${track.name}">${track.name}</span>
+                            <button class="btn-icon btn-transliterate-small" onclick="window.transliterateTrackName(${polygon.id}, ${track.id})" title="Transliterate (Tamil ↔ Latin)">
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                                    <path d="M4.545 6.714L4.11 8H3l1.862-5h1.284L8 8H6.833l-.435-1.286H4.545zm1.634-.736L5.5 3.956h-.049l-.679 2.022H6.18z"/>
+                                    <path d="M0 2a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v3h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-3H2a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h3V7a2 2 0 0 1 2-2h3V2a1 1 0 0 0-1-1H2zm7.138 9.995c.193.301.402.583.63.846-.748.575-1.673 1.001-2.768 1.292.178.217.451.635.555.867 1.125-.359 2.08-.844 2.886-1.494.777.665 1.739 1.165 2.93 1.472.133-.254.414-.673.629-.89-1.125-.253-2.057-.694-2.82-1.284.681-.747 1.222-1.651 1.621-2.757H14V8h-3v1.047h.765c-.318.844-.74 1.546-1.272 2.13a6.066 6.066 0 0 1-.415-.492 1.988 1.988 0 0 1-.94.31z"/>
+                                </svg>
+                            </button>
                             <button class="btn-icon btn-delete-small" onclick="window.deleteTrack(${polygon.id}, ${track.id})" title="Delete Track">
                                 ×
                             </button>
@@ -1245,6 +1285,8 @@ window.createPolygon = createPolygon;
 window.deletePolygon = deletePolygon;
 window.updatePolygonColor = updatePolygonColor;
 window.renamePolygon = renamePolygon;
+window.transliteratePolygonName = transliteratePolygonName;
+window.transliterateTrackName = transliterateTrackName;
 window.deleteTrack = deleteTrack;
 window.handleMoveTrack = handleMoveTrack;
 window.handleGPXUploadEvent = handleGPXUploadEvent;
