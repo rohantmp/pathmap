@@ -1,6 +1,15 @@
 import L from 'leaflet';
 import { LabelManager } from './label-manager.js';
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 export class MapManager {
     constructor(elementId) {
         // Initialize Leaflet map (centered on India)
@@ -127,10 +136,13 @@ export class MapManager {
             weight: 2
         }).addTo(layerGroup);
 
-        // Calculate area and bind tooltip
+        // Calculate area and bind tooltip (name comes from the stored data so export renames show up)
         const area = this.calculateArea(hull);
-        const areaText = this.formatArea(area);
-        polygon.bindTooltip(() => `${name ? name + '<br>' : ''}${this.formatArea(area)}`, {
+        polygon.bindTooltip(() => {
+            const data = this.polygonData.get(polygonId);
+            const label = data && data.name ? escapeHtml(data.name) + '<br>' : '';
+            return `${label}${this.formatArea(area)}`;
+        }, {
             sticky: true,
             className: 'area-tooltip'
         });
@@ -380,11 +392,49 @@ export class MapManager {
      * Clear all layers from the map
      */
     clear() {
-        this.polygonLayers.forEach((layer, id) => this.removePolygon(id));
+        this.exitEditMode();
+        Array.from(this.polygonLayers.keys()).forEach(id => this.removePolygon(id));
         this.polygonLayers.clear();
         this.trackLayers.clear();
         this.polygonData.clear();
+        this.clearGroupBoundaries();
         this.labelManager.clear();
+    }
+
+    /**
+     * Polygons currently drawn on the map, in insertion order
+     */
+    getPolygonsOnMap() {
+        return Array.from(this.polygonData.values());
+    }
+
+    /**
+     * Temporarily relabel polygons on the map (used for export-only renames).
+     * Returns a function that restores the original names.
+     * @param {Object<number, string>} overrides - polygonId -> display name
+     */
+    applyNameOverrides(overrides) {
+        const originals = new Map();
+        this.polygonData.forEach((data, id) => {
+            if (Object.prototype.hasOwnProperty.call(overrides, id) && overrides[id] !== data.name) {
+                originals.set(id, data.name);
+                data.name = overrides[id];
+            }
+        });
+
+        if (originals.size > 0) {
+            this.labelManager.renderPolygonNames(this.getPolygonsOnMap());
+        }
+
+        return () => {
+            originals.forEach((name, id) => {
+                const data = this.polygonData.get(id);
+                if (data) data.name = name;
+            });
+            if (originals.size > 0) {
+                this.labelManager.renderPolygonNames(this.getPolygonsOnMap());
+            }
+        };
     }
 
     /**
@@ -475,9 +525,9 @@ export class MapManager {
 
                 // Check for right-click (button 2)
                 if (e.originalEvent.button === 2) {
-                    // Delete vertex on right-click
-                    if (polygon.hull.length > 3) { // Keep at least 3 vertices
-                        this.deleteVertex(index);
+                    // Delete vertex on right-click (index may have shifted after earlier deletes)
+                    if (this.vertexMarkers.length > 3) { // Keep at least 3 vertices
+                        this.deleteVertex(this.vertexMarkers.indexOf(marker));
                     }
                     return;
                 }
@@ -505,7 +555,7 @@ export class MapManager {
                         map.dragging.enable();
                     }
 
-                    this.updateVertexPosition(index, marker.getLatLng());
+                    this.updateVertexPosition(this.vertexMarkers.indexOf(marker), marker.getLatLng());
                 };
 
                 map.on('mousemove', onMouseMove);
@@ -516,8 +566,8 @@ export class MapManager {
             marker.on('contextmenu', (e) => {
                 L.DomEvent.stopPropagation(e);
                 L.DomEvent.preventDefault(e);
-                if (polygon.hull.length > 3) { // Keep at least 3 vertices
-                    this.deleteVertex(index);
+                if (this.vertexMarkers.length > 3) { // Keep at least 3 vertices
+                    this.deleteVertex(this.vertexMarkers.indexOf(marker));
                 }
                 return false;
             });
@@ -590,7 +640,7 @@ export class MapManager {
      * Delete a vertex
      */
     deleteVertex(index) {
-        if (this.vertexMarkers.length <= 3) return;
+        if (this.vertexMarkers.length <= 3 || index < 0) return;
 
         this.map.removeLayer(this.vertexMarkers[index]);
         this.vertexMarkers.splice(index, 1);

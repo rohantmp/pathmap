@@ -1,9 +1,20 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
+
+const emptyModule = fileURLToPath(new URL('./shims/empty-module.js', import.meta.url));
 
 export default defineConfig({
   base: '/pathmap/',  // GitHub repository name
   plugins: [viteSingleFile()],
+  resolve: {
+    alias: {
+      // jsPDF optional deps used only by jsPDF.html()/SVG APIs — not needed here
+      html2canvas: emptyModule,
+      canvg: emptyModule,
+      dompurify: emptyModule,
+    },
+  },
   build: {
     target: 'esnext',
     assetsInlineLimit: 100000000,

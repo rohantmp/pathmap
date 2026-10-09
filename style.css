@@ -192,27 +192,6 @@ body {
     gap: 0.75rem;
 }
 
-.create-buttons {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.create-buttons .btn {
-    flex: 1;
-}
-
-/* Specific styles for upload section create buttons */
-.upload-section .create-buttons {
-    flex-direction: column;
-    justify-content: center;
-    flex: 0 0 auto;
-}
-
-.upload-section .create-buttons button {
-    white-space: nowrap;
-    width: 120px;
-}
-
 .polygons-list {
     flex: 1;
     overflow-y: auto;
@@ -392,6 +371,13 @@ body {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.5rem;
+}
+
+.export-hint {
+    margin-top: 0.75rem;
+    font-size: 0.75rem;
+    color: #7f8c8d;
+    line-height: 1.4;
 }
 
 .btn-icon {
@@ -721,38 +707,6 @@ body {
     padding-top: 0.5rem;
 }
 
-/* Vertex Edit Panel */
-.vertex-edit-panel {
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid #e0e0e0;
-    background: #f8f9fa;
-}
-
-.vertex-edit-panel h3 {
-    margin: 0 0 0.75rem 0;
-    font-size: 1rem;
-    color: #2c3e50;
-}
-
-.vertex-edit-info {
-    font-size: 0.85rem;
-}
-
-.vertex-edit-info p {
-    margin: 0.5rem 0;
-    color: #666;
-}
-
-.vertex-edit-info ul {
-    margin: 0.5rem 0;
-    padding-left: 1.5rem;
-}
-
-.vertex-edit-info li {
-    margin: 0.25rem 0;
-    color: #666;
-}
-
 .polygon-select {
     width: 100%;
     padding: 0.5rem;
@@ -761,43 +715,6 @@ body {
     border-radius: 4px;
     background: white;
     font-size: 0.85rem;
-}
-
-/* Export Panel */
-.export-panel {
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid #e0e0e0;
-    background: #f8f9fa;
-}
-
-.export-panel h3 {
-    margin: 0 0 0.75rem 0;
-    font-size: 1rem;
-    color: #2c3e50;
-}
-
-.export-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-.export-buttons .btn {
-    flex: 1;
-    min-width: 80px;
-}
-
-/* Settings Panel */
-.settings-panel {
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid #e0e0e0;
-    background: #f8f9fa;
-}
-
-.settings-panel h3 {
-    margin: 0 0 1rem 0;
-    font-size: 1rem;
-    color: #2c3e50;
 }
 
 .setting-group {
@@ -855,44 +772,6 @@ body {
 .info-icon:active {
     background: #3498db;
     color: white;
-}
-
-/* Equalizer Container */
-.equalizer-container {
-    display: flex;
-    justify-content: space-around;
-    align-items: flex-end;
-    padding: 0.5rem;
-    background: #ecf0f1;
-    border-radius: 6px;
-    height: 140px;
-}
-
-.eq-band {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.25rem;
-}
-
-.eq-slider {
-    writing-mode: bt-lr; /* IE */
-    -webkit-appearance: slider-vertical;
-    width: 20px;
-    height: 80px;
-    cursor: pointer;
-}
-
-.eq-label {
-    font-size: 0.65rem;
-    color: #7f8c8d;
-    text-transform: uppercase;
-}
-
-.eq-value {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #3498db;
 }
 
 /* Empty States */
@@ -1031,9 +910,6 @@ body {
 }
 
 /* Leader lines (created by LabelManager) */
-.leaflet-interactive[stroke="#666"] {
-    pointer-events: none;
-}
 
 /* Vertex Edit Mode */
 .vertex-marker {
@@ -1182,4 +1058,268 @@ body {
     background: transparent;
     border: none;
     box-shadow: none;
+}
+
+/* Export dialog */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 30, 40, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 1rem;
+}
+
+.modal-backdrop[hidden] {
+    display: none;
+}
+
+.modal {
+    background: white;
+    border-radius: 10px;
+    width: 100%;
+    max-width: 640px;
+    max-height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.modal-header h2 {
+    font-size: 1.1rem;
+    color: #2c3e50;
+}
+
+.modal-close {
+    font-size: 1.4rem;
+    line-height: 1;
+    width: 2rem;
+    height: 2rem;
+}
+
+.modal-body {
+    padding: 1rem 1.25rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.modal-section h3 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #7f8c8d;
+    margin-bottom: 0.6rem;
+}
+
+.modal-help {
+    font-size: 0.8rem;
+    color: #7f8c8d;
+    margin-bottom: 0.6rem;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: #2c3e50;
+    margin-bottom: 0.75rem;
+    flex: 1;
+}
+
+.field input[type="text"],
+.field textarea,
+.field select {
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 0.875rem;
+    background: white;
+}
+
+.field textarea {
+    resize: vertical;
+    min-height: 5rem;
+    line-height: 1.4;
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.field-row {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.field-row .toggle-control {
+    margin-bottom: 0.75rem;
+}
+
+.export-rename-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-height: 14rem;
+    overflow-y: auto;
+}
+
+.export-rename-row {
+    display: grid;
+    grid-template-columns: 14px minmax(0, 1fr) minmax(0, 1.4fr);
+    gap: 0.6rem;
+    align-items: center;
+}
+
+.export-rename-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.export-rename-original {
+    font-size: 0.8rem;
+    color: #7f8c8d;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.export-rename-row input {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.85rem;
+    min-width: 0;
+}
+
+.export-rename-row input:focus {
+    outline: none;
+    border-color: #3498db;
+}
+
+.modal-footer {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1.25rem;
+    border-top: 1px solid #e0e0e0;
+}
+
+.modal-status {
+    flex: 1;
+    font-size: 0.8rem;
+    color: #7f8c8d;
+}
+
+.modal.is-busy .btn {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Off-screen blocks rendered for export (front matter, legend) */
+.export-block {
+    position: fixed;
+    left: -100000px;
+    top: 0;
+    background: #ffffff;
+    color: #1f2a33;
+    padding: 24px 32px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Noto Sans', 'Noto Sans Tamil', sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+.export-block .export-title {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.25;
+    margin: 0 0 10px 0;
+}
+
+.export-block .export-notes h2 {
+    font-size: 20px;
+    margin: 14px 0 6px;
+}
+
+.export-block .export-notes h3 {
+    font-size: 17px;
+    margin: 12px 0 4px;
+}
+
+.export-block .export-notes h4 {
+    font-size: 15px;
+    margin: 10px 0 4px;
+}
+
+.export-block .export-notes p {
+    margin: 0 0 8px 0;
+}
+
+.export-block .export-notes ul {
+    margin: 0 0 8px 0;
+    padding-left: 22px;
+}
+
+.export-block .export-legend {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 14px;
+}
+
+.export-block .export-legend td {
+    padding: 5px 8px;
+    border-bottom: 1px solid #e6e9ec;
+    vertical-align: middle;
+}
+
+.export-block .export-legend-swatch {
+    width: 18px;
+}
+
+.export-block .export-legend-swatch span {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+.export-block .export-legend-area {
+    text-align: right;
+    white-space: nowrap;
+    color: #4a5a68;
+}
+
+@media (max-width: 480px) {
+    .modal {
+        max-height: 100vh;
+        border-radius: 0;
+    }
+
+    .field-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
 }

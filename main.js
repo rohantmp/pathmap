@@ -3,8 +3,8 @@ import { MapManager } from './map-manager.js';
 import { parseGPXFile, getGPXName } from './gpx-parser.js';
 import { mergeConvexHulls } from './convex-hull.js';
 import { saveToLocalStorage, loadFromLocalStorage, downloadSession, uploadSession } from './storage.js';
-import { exportPNG, exportKML, exportGeoJSON, exportTracksGeoJSON } from './export.js';
-import { transliterateSimplified, detectScript } from './transliteration.js';
+import { exportComposite, exportKML, exportGeoJSON, exportTracksGeoJSON } from './export.js';
+import { transliterateSimplified } from './transliteration.js';
 
 // Application state
 let state = {
@@ -86,18 +86,8 @@ function init() {
         document.getElementById('session-file-input').click();
     });
     document.getElementById('session-file-input').addEventListener('change', handleUploadSession);
-    // Keep old buttons for compatibility
-    if (document.getElementById('toggle-vertex-edit')) {
-        document.getElementById('toggle-vertex-edit').addEventListener('click', toggleVertexEdit);
-    }
     document.getElementById('polygon-select').addEventListener('change', handlePolygonSelect);
     document.getElementById('exit-edit-mode').addEventListener('click', exitEditMode);
-    if (document.getElementById('toggle-settings')) {
-        document.getElementById('toggle-settings').addEventListener('click', toggleSettings);
-    }
-    if (document.getElementById('toggle-export')) {
-        document.getElementById('toggle-export').addEventListener('click', toggleExport);
-    }
 
     // Collapsible upload section
     const uploadToggle = document.getElementById('toggle-upload-section');
@@ -146,7 +136,8 @@ function init() {
             }
         });
     });
-    document.getElementById('export-png').addEventListener('click', handleExportPNG);
+    document.getElementById('export-png').addEventListener('click', () => openExportDialog('png'));
+    document.getElementById('export-pdf').addEventListener('click', () => openExportDialog('pdf'));
     document.getElementById('export-kml').addEventListener('click', handleExportKML);
     document.getElementById('export-geojson').addEventListener('click', handleExportGeoJSON);
     document.getElementById('export-tracks-geojson').addEventListener('click', handleExportTracksGeoJSON);
@@ -154,22 +145,29 @@ function init() {
     // Set up settings panel sliders
     setupSettingsSliders();
 
+    // Set up the export dialog
+    setupExportDialog();
+
+    // Persist the map position when the user pans/zooms (debounced)
+    let mapStateSaveTimer = null;
+    mapManager.map.on('moveend', () => {
+        clearTimeout(mapStateSaveTimer);
+        mapStateSaveTimer = setTimeout(saveState, 500);
+    });
+
     renderPolygonList();
 }
 
-function toggleVertexEdit() {
-    const panel = document.getElementById('vertex-edit-panel');
-    const isVisible = panel.style.display !== 'none';
-
-    if (isVisible) {
-        // Close panel and exit edit mode
-        panel.style.display = 'none';
-        mapManager.exitEditMode();
-    } else {
-        // Open panel and populate polygon list
-        panel.style.display = 'block';
-        populatePolygonSelect();
-    }
+/**
+ * Escape a string for safe interpolation into HTML markup/attributes
+ */
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function populatePolygonSelect() {
@@ -222,21 +220,6 @@ function handlePolygonSelect(event) {
 function exitEditMode() {
     mapManager.exitEditMode();
     document.getElementById('polygon-select').value = '';
-    document.getElementById('vertex-edit-panel').style.display = 'none';
-}
-
-function toggleExport() {
-    const panel = document.getElementById('export-panel');
-    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-}
-
-async function handleExportPNG() {
-    try {
-        const mapElement = document.getElementById('map');
-        await exportPNG(mapElement);
-    } catch (error) {
-        alert(error.message);
-    }
 }
 
 function handleExportKML() {
@@ -273,11 +256,6 @@ function getPolygonsToExport() {
     }
     // Otherwise export all
     return state.polygons;
-}
-
-function toggleSettings() {
-    const panel = document.getElementById('settings-panel');
-    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }
 
 function setupSettingsSliders() {
@@ -334,26 +312,6 @@ function resetSettings() {
     document.getElementById('spring-strength-value').textContent = '0.10';
 
     applyLabelSettingsLive();
-}
-
-function applyLabelSettings() {
-    applyLabelSettingsLive();
-}
-
-function createPolygon() {
-    const polygon = {
-        id: state.nextPolygonId++,
-        name: `Polygon ${state.polygons.length + 1}`,
-        color: getNextColor(),
-        tracks: [],
-        hull: null,
-        groupId: null,
-        hidden: false
-    };
-
-    state.polygons.push(polygon);
-    renderPolygonList();
-    saveState();
 }
 
 function createGroup() {
@@ -499,7 +457,11 @@ function deleteGroup(groupId) {
         }
     });
 
+    if (state.focusedGroupId === groupId) {
+        state.focusedGroupId = null;
+    }
     state.groups = state.groups.filter(g => g.id !== groupId);
+    updateMapVisibility();
     renderPolygonList();
     saveState();
 }
@@ -526,6 +488,7 @@ function assignPolygonToGroup(polygonId, groupId) {
     const polygon = state.polygons.find(p => p.id === polygonId);
     if (polygon) {
         polygon.groupId = groupId || null;
+        updateMapVisibility();
         renderPolygonList();
         saveState();
     }
@@ -551,11 +514,16 @@ function deletePolygon(polygonId) {
         return;
     }
 
+    if (mapManager.editingPolygonId === polygonId) {
+        exitEditMode();
+    }
+
     state.polygons = state.polygons.filter(p => p.id !== polygonId);
     if (state.focusedPolygonId === polygonId) {
         state.focusedPolygonId = null;
     }
     mapManager.removePolygon(polygonId);
+    updateMapVisibility();
     renderPolygonList();
     saveState();
 }
@@ -576,38 +544,31 @@ function toggleFocusPolygon(polygonId) {
     saveState();
 }
 
+/**
+ * Whether a polygon should currently be drawn on the map, taking
+ * hidden flags and polygon/group focus into account.
+ */
+function isPolygonVisible(polygon) {
+    if (polygon.hidden) return false;
+
+    if (polygon.groupId) {
+        const group = state.groups.find(g => g.id === polygon.groupId);
+        if (group && group.hidden) return false;
+    }
+
+    if (state.focusedPolygonId !== null) {
+        return state.focusedPolygonId === polygon.id;
+    }
+    if (state.focusedGroupId !== null) {
+        return polygon.groupId === state.focusedGroupId;
+    }
+    return true;
+}
+
 function updateMapVisibility() {
-    state.polygons.forEach(polygon => {
-        let shouldShow = true;
-
-        // Check if polygon is hidden
-        if (polygon.hidden) {
-            shouldShow = false;
-        }
-        // Check if polygon's group is hidden
-        else if (polygon.groupId) {
-            const group = state.groups.find(g => g.id === polygon.groupId);
-            if (group && group.hidden) {
-                shouldShow = false;
-            }
-        }
-
-        // Check polygon focus
-        if (shouldShow && state.focusedPolygonId !== null) {
-            shouldShow = state.focusedPolygonId === polygon.id;
-        }
-        // Check group focus
-        else if (shouldShow && state.focusedGroupId !== null) {
-            shouldShow = polygon.groupId === state.focusedGroupId;
-        }
-
-        if (shouldShow) {
-            updatePolygonOnMap(polygon);
-        } else {
-            mapManager.removePolygon(polygon.id);
-        }
-    });
+    state.polygons.forEach(polygon => updatePolygonOnMap(polygon, true));
     mapManager.refreshAllLabels();
+    renderGroupBoundaries();
 }
 
 function updatePolygonColor(polygonId, color) {
@@ -623,6 +584,7 @@ function renamePolygon(polygonId, newName) {
     const polygon = state.polygons.find(p => p.id === polygonId);
     if (polygon) {
         polygon.name = newName;
+        updatePolygonOnMap(polygon, true); // Refresh the map label without moving the view
         renderPolygonList();
         saveState();
     }
@@ -649,9 +611,11 @@ function transliterateTrackName(polygonId, trackId) {
     const track = polygon.tracks.find(t => t.id === trackId);
     if (track) {
         const { result } = transliterateSimplified(track.name);
-        track.name = result;
-        renderPolygonList();
-        saveState();
+        if (result && result.trim()) {
+            track.name = result;
+            renderPolygonList();
+            saveState();
+        }
     }
 }
 
@@ -723,7 +687,7 @@ function updatePolygonHull(polygon) {
 }
 
 function updatePolygonOnMap(polygon, skipFitBounds = false) {
-    if (polygon.hull && polygon.hull.length >= 3) {
+    if (polygon.hull && polygon.hull.length >= 3 && isPolygonVisible(polygon)) {
         mapManager.addPolygon(polygon.id, polygon.hull, polygon.color, polygon.name, skipFitBounds);
 
         if (mapManager.showTracks) {
@@ -735,17 +699,9 @@ function updatePolygonOnMap(polygon, skipFitBounds = false) {
 }
 
 function handleToggleTracks(event) {
-    const showTracks = event.target.checked;
-    mapManager.setShowTracks(showTracks);
-
-    // Update all polygons
-    state.polygons.forEach(polygon => {
-        if (showTracks) {
-            mapManager.addTracks(polygon.id, polygon.tracks, polygon.color);
-        } else {
-            mapManager.removeTracks(polygon.id);
-        }
-    });
+    mapManager.setShowTracks(event.target.checked);
+    // Re-sync every polygon so tracks only appear for polygons that are actually shown
+    updateMapVisibility();
 }
 
 function handleToggleGroupBounds(event) {
@@ -764,75 +720,15 @@ function renderGroupBoundaries() {
     state.groups.forEach(group => {
         if (group.hidden) return;
 
-        const groupPolygons = state.polygons.filter(p => p.groupId === group.id && p.hull && !p.hidden);
+        const groupPolygons = state.polygons.filter(p => p.groupId === group.id && p.hull && isPolygonVisible(p));
         if (groupPolygons.length === 0) return;
 
-        // Collect all points from all polygons in the group
-        const allPoints = [];
-        groupPolygons.forEach(polygon => {
-            polygon.hull.forEach(point => {
-                allPoints.push([point.lat, point.lon]);
-            });
-        });
+        // Convex hull of all member polygon hulls
+        const groupHull = mergeConvexHulls(groupPolygons.map(p => p.hull));
+        if (groupHull.length < 3) return;
 
-        if (allPoints.length < 3) return;
-
-        // Compute convex hull of all points
-        const groupHull = computeConvexHull(allPoints);
-
-        // Add the group boundary to the map
         mapManager.addGroupBoundary(group.id, groupHull, group.name);
     });
-}
-
-// Convex hull using Graham scan algorithm
-function computeConvexHull(points) {
-    if (points.length < 3) return points;
-
-    // Find the point with lowest y (and leftmost if tie)
-    let start = 0;
-    for (let i = 1; i < points.length; i++) {
-        if (points[i][0] < points[start][0] ||
-            (points[i][0] === points[start][0] && points[i][1] < points[start][1])) {
-            start = i;
-        }
-    }
-
-    // Swap start point to beginning
-    [points[0], points[start]] = [points[start], points[0]];
-    const pivot = points[0];
-
-    // Sort points by polar angle with respect to pivot
-    const sorted = points.slice(1).sort((a, b) => {
-        const angleA = Math.atan2(a[0] - pivot[0], a[1] - pivot[1]);
-        const angleB = Math.atan2(b[0] - pivot[0], b[1] - pivot[1]);
-        if (angleA !== angleB) return angleA - angleB;
-        // If same angle, sort by distance
-        const distA = (a[0] - pivot[0]) ** 2 + (a[1] - pivot[1]) ** 2;
-        const distB = (b[0] - pivot[0]) ** 2 + (b[1] - pivot[1]) ** 2;
-        return distA - distB;
-    });
-
-    // Build hull using stack
-    const hull = [pivot];
-
-    for (const point of sorted) {
-        while (hull.length > 1) {
-            const top = hull[hull.length - 1];
-            const second = hull[hull.length - 2];
-            // Cross product to check turn direction
-            const cross = (top[1] - second[1]) * (point[0] - top[0]) -
-                         (top[0] - second[0]) * (point[1] - top[1]);
-            if (cross <= 0) {
-                hull.pop();
-            } else {
-                break;
-            }
-        }
-        hull.push(point);
-    }
-
-    return hull.map(p => ({ lat: p[0], lon: p[1] }));
 }
 
 function handleToggleDebugFields(event) {
@@ -859,19 +755,15 @@ function handleClearAll() {
         return;
     }
 
-    // Clear all polygons from map
-    state.polygons.forEach(polygon => {
-        mapManager.removePolygon(polygon.id);
-    });
-
-    // Clear all group boundaries
-    mapManager.clearGroupBoundaries();
+    exitEditMode();
+    mapManager.clear();
 
     // Reset state
     state.polygons = [];
     state.groups = [];
     state.focusedPolygonId = null;
     state.focusedGroupId = null;
+    colorIndex = 0;
 
     renderPolygonList();
     saveState();
@@ -912,7 +804,7 @@ function renderPolygonList() {
                         <path d="M4.5 5.5L8 9l3.5-3.5"/>
                     </svg>
                 </button>
-                <input type="text" class="group-name" value="${group.name}"
+                <input type="text" class="group-name" value="${escapeHtml(group.name)}"
                        onchange="window.renameGroup(${group.id}, this.value)">
                 <span class="group-count">(${groupPolygons.length})</span>
                 <button class="btn-icon ${group.hidden ? 'btn-hidden-active' : ''}" onclick="window.toggleHideGroup(${group.id})" title="${group.hidden ? 'Show' : 'Hide'}">
@@ -964,7 +856,7 @@ function renderPolygonCard(polygon, inGroup) {
         <div class="polygon-header">
             <div class="polygon-header-row">
                 <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
-                <input type="text" class="polygon-name" value="${polygon.name}"
+                <input type="text" class="polygon-name" value="${escapeHtml(polygon.name)}"
                        onchange="window.renamePolygon(${polygon.id}, this.value)">
                 <button class="btn-icon btn-transliterate" onclick="window.transliteratePolygonName(${polygon.id})" title="Transliterate (Tamil ↔ Latin)">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -979,7 +871,7 @@ function renderPolygonCard(polygon, inGroup) {
                 <select class="polygon-group-select" onchange="window.assignPolygonToGroup(${polygon.id}, this.value ? parseInt(this.value) : null)">
                     <option value="">No group</option>
                     ${state.groups.map(g =>
-                        `<option value="${g.id}" ${polygon.groupId === g.id ? 'selected' : ''}>${g.name}</option>`
+                        `<option value="${g.id}" ${polygon.groupId === g.id ? 'selected' : ''}>${escapeHtml(g.name)}</option>`
                     ).join('')}
                 </select>
                 <div class="polygon-actions">
@@ -1015,7 +907,7 @@ function renderPolygonCard(polygon, inGroup) {
                 ${polygon.tracks.map(track => `
                     <div class="track-item">
                         <div class="track-row">
-                            <span class="track-name" title="${track.name}">${track.name}</span>
+                            <span class="track-name" title="${escapeHtml(track.name)}">${escapeHtml(track.name)}</span>
                             <button class="btn-icon btn-transliterate-small" onclick="window.transliterateTrackName(${polygon.id}, ${track.id})" title="Transliterate (Tamil ↔ Latin)">
                                 <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
                                     <path d="M4.545 6.714L4.11 8H3l1.862-5h1.284L8 8H6.833l-.435-1.286H4.545zm1.634-.736L5.5 3.956h-.049l-.679 2.022H6.18z"/>
@@ -1030,7 +922,7 @@ function renderPolygonCard(polygon, inGroup) {
                             <select class="track-move-select" onchange="window.handleMoveTrack(${track.id}, ${polygon.id}, this)">
                                 <option value="">Move to...</option>
                                 ${state.polygons.filter(p => p.id !== polygon.id).map(p =>
-                                    `<option value="${p.id}">${p.name}</option>`
+                                    `<option value="${p.id}">${escapeHtml(p.name)}</option>`
                                 ).join('')}
                             </select>
                         </div>
@@ -1067,10 +959,8 @@ function saveState() {
 }
 
 function restoreState() {
-    // Restore polygons on map
-    state.polygons.forEach(polygon => {
-        updatePolygonOnMap(polygon);
-    });
+    // Restore polygons on map (respecting hidden/focus flags)
+    updateMapVisibility();
 
     // Restore map state
     if (state.mapState) {
@@ -1100,6 +990,7 @@ async function handleUploadSession(event) {
         }
 
         // Clear current state
+        exitEditMode();
         mapManager.clear();
 
         // Load new state
@@ -1235,7 +1126,7 @@ function handleDrop(event, targetType, targetId) {
 
     const { type: sourceType, id: sourceId } = dragData;
 
-    if (sourceId === targetId) return;
+    if (sourceType === targetType && sourceId === targetId) return;
 
     if (sourceType === 'group' && targetType === 'group') {
         // Reorder groups
@@ -1280,8 +1171,177 @@ function handleDrop(event, targetType, targetId) {
     document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
 }
 
+// ---------------------------------------------------------------------------
+// Export dialog (PNG / PDF with front matter and export-only polygon renames)
+// ---------------------------------------------------------------------------
+
+const EXPORT_PREFS_KEY = 'pathmap_export_prefs';
+
+// Export-only names, kept in memory for the page lifetime; never written to the session
+let exportRenames = {};
+
+function setupExportDialog() {
+    const modal = document.getElementById('export-modal');
+    if (!modal) return;
+
+    document.getElementById('export-modal-close').addEventListener('click', closeExportDialog);
+    document.getElementById('export-cancel').addEventListener('click', closeExportDialog);
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) closeExportDialog();
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !modal.hidden && !modal.querySelector('.modal').classList.contains('is-busy')) {
+            closeExportDialog();
+        }
+    });
+    document.getElementById('export-form').addEventListener('submit', (event) => event.preventDefault());
+    document.getElementById('export-run-png').addEventListener('click', () => runCompositeExport('png'));
+    document.getElementById('export-run-pdf').addEventListener('click', () => runCompositeExport('pdf'));
+
+    // Restore the last-used front matter and options
+    try {
+        const prefs = JSON.parse(localStorage.getItem(EXPORT_PREFS_KEY) || 'null');
+        if (prefs && typeof prefs === 'object') {
+            if (typeof prefs.title === 'string') document.getElementById('export-title').value = prefs.title;
+            if (typeof prefs.notes === 'string') document.getElementById('export-notes').value = prefs.notes;
+            if (prefs.placement) document.getElementById('export-placement').value = prefs.placement;
+            if (typeof prefs.legend === 'boolean') document.getElementById('export-legend').checked = prefs.legend;
+            if (prefs.pageSize) document.getElementById('export-page-size').value = prefs.pageSize;
+            if (prefs.orientation) document.getElementById('export-orientation').value = prefs.orientation;
+        }
+    } catch (error) {
+        console.warn('Could not restore export preferences:', error);
+    }
+}
+
+/**
+ * Polygons that are currently drawn on the map, in sidebar order
+ */
+function getPolygonsForCompositeExport() {
+    const onMap = new Set(mapManager.getPolygonsOnMap().map(p => p.id));
+    return state.polygons.filter(p => onMap.has(p.id));
+}
+
+function openExportDialog(format) {
+    const modal = document.getElementById('export-modal');
+    const list = document.getElementById('export-rename-list');
+    const polygons = getPolygonsForCompositeExport();
+
+    if (polygons.length === 0) {
+        list.innerHTML = '<p class="empty-state-small">No polygons are shown on the map. The export will contain the map view only.</p>';
+    } else {
+        list.innerHTML = polygons.map(polygon => {
+            const current = exportRenames[polygon.id] !== undefined ? exportRenames[polygon.id] : polygon.name;
+            return `
+            <div class="export-rename-row" data-polygon-id="${polygon.id}">
+                <span class="export-rename-swatch" style="background: ${escapeHtml(polygon.color)}"></span>
+                <span class="export-rename-original" title="${escapeHtml(polygon.name)}">${escapeHtml(polygon.name)}</span>
+                <input type="text" value="${escapeHtml(current)}" data-original="${escapeHtml(polygon.name)}" aria-label="Export name for ${escapeHtml(polygon.name)}">
+            </div>`;
+        }).join('');
+    }
+
+    // Make the button matching the entry point the primary action
+    const pngButton = document.getElementById('export-run-png');
+    const pdfButton = document.getElementById('export-run-pdf');
+    pngButton.classList.toggle('btn-primary', format === 'png');
+    pngButton.classList.toggle('btn-secondary', format !== 'png');
+    pdfButton.classList.toggle('btn-primary', format === 'pdf');
+    pdfButton.classList.toggle('btn-secondary', format !== 'pdf');
+
+    document.getElementById('export-status').textContent = '';
+    modal.hidden = false;
+    document.getElementById('export-title').focus();
+}
+
+function closeExportDialog() {
+    rememberExportRenames();
+    document.getElementById('export-modal').hidden = true;
+}
+
+function rememberExportRenames() {
+    document.querySelectorAll('#export-rename-list .export-rename-row').forEach(row => {
+        const id = parseInt(row.dataset.polygonId, 10);
+        const input = row.querySelector('input');
+        if (!input) return;
+        const value = input.value.trim();
+        if (value && value !== input.dataset.original) {
+            exportRenames[id] = value;
+        } else {
+            delete exportRenames[id];
+        }
+    });
+}
+
+function readExportForm() {
+    return {
+        title: document.getElementById('export-title').value,
+        notes: document.getElementById('export-notes').value,
+        placement: document.getElementById('export-placement').value,
+        legend: document.getElementById('export-legend').checked,
+        pageSize: document.getElementById('export-page-size').value,
+        orientation: document.getElementById('export-orientation').value
+    };
+}
+
+async function runCompositeExport(format) {
+    const modalCard = document.querySelector('#export-modal .modal');
+    const status = document.getElementById('export-status');
+    if (modalCard.classList.contains('is-busy')) return;
+
+    rememberExportRenames();
+    const form = readExportForm();
+    try {
+        localStorage.setItem(EXPORT_PREFS_KEY, JSON.stringify(form));
+    } catch (error) {
+        console.warn('Could not save export preferences:', error);
+    }
+
+    const polygons = getPolygonsForCompositeExport();
+    const overrides = {};
+    polygons.forEach(polygon => {
+        if (exportRenames[polygon.id] !== undefined) {
+            overrides[polygon.id] = exportRenames[polygon.id];
+        }
+    });
+
+    const legend = form.legend
+        ? polygons.map(polygon => ({
+            name: overrides[polygon.id] !== undefined ? overrides[polygon.id] : polygon.name,
+            color: polygon.color,
+            area: mapManager.formatArea(mapManager.calculateArea(polygon.hull))
+        }))
+        : null;
+
+    modalCard.classList.add('is-busy');
+    status.textContent = `Rendering ${format.toUpperCase()}…`;
+
+    // Relabel the map for the duration of the capture only
+    const restoreNames = mapManager.applyNameOverrides(overrides);
+    try {
+        await exportComposite({
+            format,
+            mapElement: document.getElementById('map'),
+            frontMatter: { title: form.title, body: form.notes },
+            placement: form.placement,
+            legend,
+            pageSize: form.pageSize,
+            orientation: form.orientation,
+            filenameBase: form.title && form.title.trim() ? form.title : 'pathmap-export'
+        });
+        status.textContent = '';
+        closeExportDialog();
+    } catch (error) {
+        console.error('Export failed:', error);
+        status.textContent = '';
+        alert(error.message);
+    } finally {
+        restoreNames();
+        modalCard.classList.remove('is-busy');
+    }
+}
+
 // Expose functions to window for inline event handlers
-window.createPolygon = createPolygon;
 window.deletePolygon = deletePolygon;
 window.updatePolygonColor = updatePolygonColor;
 window.renamePolygon = renamePolygon;
@@ -1378,7 +1438,6 @@ function initMobileMenu() {
     if (window.innerWidth <= 768) {
         // Add click handlers to important actions that should close the sidebar
         const closeOnClick = [
-            'create-polygon',
             'create-group',
             'polygon-select',
             'exit-edit-mode'
