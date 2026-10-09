@@ -5,6 +5,15 @@
 
 import L from 'leaflet';
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 export class LabelManager {
     constructor(map) {
         this.map = map;
@@ -18,7 +27,8 @@ export class LabelManager {
         this.showAreaOnMap = false; // Toggle for showing area next to polygon name
         this.areaFormatter = null; // Function to format area: (hull) => string
         this.isSimulating = false;
-        this.simulationInterval = null;
+        this.simulationFrame = null; // requestAnimationFrame handle of the running simulation
+        this.pendingNamePolygons = null; // polygons whose names render when the simulation settles
         this.manuallyPositioned = new Set(); // Track labels that have been manually dragged
         this.velocities = []; // Velocity for each label { lat, lon }
         this.previousPositions = []; // For Verlet integration
@@ -238,147 +248,6 @@ export class LabelManager {
     }
 
     /**
-     * Set labels for a polygon
-     */
-    setLabels(polygonId, vertices) {
-        // Remove existing labels for this polygon
-        this.removeLabels(polygonId);
-
-        if (!vertices || vertices.length === 0) {
-            return;
-        }
-
-        // Get current map bounds
-        const bounds = this.map.getBounds();
-
-        // Calculate pixels to degrees
-        const zoom = this.map.getZoom();
-        const centerLat = bounds.getCenter().lat;
-        const metersPerPixel = 156543.03392 * Math.cos(centerLat * Math.PI / 180) / Math.pow(2, zoom);
-        const pixelsToDegrees = (pixels) => (metersPerPixel * pixels) / 111320;
-
-        // Minimum distance between vertices to show separate labels
-        const minVertexDistance = pixelsToDegrees(this.settings.minVertexDistance);
-
-        // Start labels at preferred anchor position (outside polygon)
-        const initialOffset = pixelsToDegrees(this.settings.initialOffset);
-
-        // Calculate polygon center
-        const visibleVertices = vertices.filter(v => bounds.contains(L.latLng(v.lat, v.lon)));
-        if (visibleVertices.length === 0) return;
-
-        const polyCenterLat = visibleVertices.reduce((sum, v) => sum + v.lat, 0) / visibleVertices.length;
-        const polyCenterLon = visibleVertices.reduce((sum, v) => sum + v.lon, 0) / visibleVertices.length;
-
-        // Track which vertices we've already labeled
-        const labeledVertices = [];
-
-        // Store polygon vertices for inside/outside test
-        const polygonVertices = vertices;
-
-        // First pass: calculate angles and find groups of close vertices
-        const vertexData = vertices.map((vertex, index) => ({
-            vertex,
-            index,
-            angle: this.calculateVertexAngle(vertices, index),
-            inBounds: bounds.contains(L.latLng(vertex.lat, vertex.lon))
-        }));
-
-        // Add labels for visible vertices, preferring sharpest angles in groups
-        vertexData.forEach(({ vertex, index, angle, inBounds }) => {
-            const vertexLatLng = L.latLng(vertex.lat, vertex.lon);
-
-            // Only add label if vertex is in current view
-            if (!inBounds) {
-                return;
-            }
-
-            // Check vertex angle - skip if too shallow
-            if (angle > 180 - this.settings.minVertexAngle) {
-                // Angle is too shallow (close to 180 degrees = straight line)
-                return;
-            }
-
-            // Check if this vertex is too close to an already labeled vertex
-            const closeLabeled = labeledVertices.find(labeled => {
-                const dist = Math.sqrt(
-                    Math.pow(vertex.lat - labeled.lat, 2) +
-                    Math.pow(vertex.lon - labeled.lon, 2)
-                );
-                return dist < minVertexDistance;
-            });
-
-            if (closeLabeled) {
-                // This vertex is close to an already labeled one
-                // Only replace if this vertex has a sharper angle
-                if (angle < closeLabeled.angle) {
-                    // Remove the old labeled vertex and use this sharper one
-                    const oldIndex = labeledVertices.indexOf(closeLabeled);
-                    labeledVertices.splice(oldIndex, 1);
-                    // Also remove the old label from the array
-                    const oldLabelIndex = this.labels.findIndex(l =>
-                        l.polygonId === polygonId &&
-                        Math.abs(l.vertexLatLng.lat - closeLabeled.lat) < 0.000001 &&
-                        Math.abs(l.vertexLatLng.lng - closeLabeled.lon) < 0.000001
-                    );
-                    if (oldLabelIndex !== -1) {
-                        this.labels.splice(oldLabelIndex, 1);
-                    }
-                } else {
-                    // Existing label has sharper or equal angle, skip this one
-                    return;
-                }
-            }
-
-            // Mark this vertex as labeled with its angle for comparison
-            labeledVertices.push({ lat: vertex.lat, lon: vertex.lon, angle });
-
-            const key = `${polygonId}-${index}`;
-            const text = `${vertex.lat.toFixed(6)}, ${vertex.lon.toFixed(6)}`;
-            const labelWidth = this.estimateLabelWidth(text);
-
-            // Alternate up and down for visual jitter (every other vertex)
-            const isAlternate = index % 2 === 1;
-            const verticalOffset = pixelsToDegrees(isAlternate ? -45 : 45); // Alternate up/down by label height + padding (45px)
-
-            // Calculate direction away from polygon center
-            const dx = vertex.lon - polyCenterLon;
-            const dy = vertex.lat - polyCenterLat;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-
-            // Find optimal position for this coordinate label
-            const optimalPosition = this.findOptimalLabelPosition(
-                vertex,
-                index,
-                polygonVertices,
-                centerLat,
-                centerLon,
-                initialOffset,
-                verticalOffset,
-                pixelsToDegrees
-            );
-
-            this.labels.push({
-                key,
-                polygonId,
-                vertexIndex: index,
-                vertexLatLng: vertexLatLng,
-                labelLatLng: L.latLng(optimalPosition.lat, optimalPosition.lon),
-                text,
-                width: labelWidth,
-                height: 30,
-                polygonVertices: polygonVertices  // Store for inside/outside check
-            });
-        });
-
-        // Render initial positions
-        this.renderLabels();
-
-        // Run simulation to adjust positions and avoid collisions
-        this.startSimulation();
-    }
-
-    /**
      * Remove labels for a polygon
      */
     removeLabels(polygonId) {
@@ -434,11 +303,11 @@ export class LabelManager {
      * Start force-directed simulation
      */
     startSimulation(polygonsForNames = null) {
-        if (this.isSimulating) {
-            return;
-        }
+        // A new label set supersedes any simulation still running on the old one
+        this.stopSimulation();
 
         this.isSimulating = true;
+        this.pendingNamePolygons = polygonsForNames;
         let iterationCount = 0;
 
         // Initialize velocities and previous positions for Verlet integration
@@ -479,37 +348,44 @@ export class LabelManager {
                 this.renderLabels();
 
                 // Continue animation
-                requestAnimationFrame(animate);
+                this.simulationFrame = requestAnimationFrame(animate);
             } else {
                 // Simulation complete
+                this.simulationFrame = null;
                 this.isSimulating = false;
                 this.renderLabels();
-
-                // Update polygon names at the end of simulation
-                if (polygonsForNames) {
-                    this.renderPolygonNames(polygonsForNames);
-                }
-
-                // Update debug fields at end of simulation
-                if (this.showDebugFields) {
-                    this.renderDebugFields();
-                }
+                this.finishSimulation();
             }
         };
 
         // Start animation
-        requestAnimationFrame(animate);
+        this.simulationFrame = requestAnimationFrame(animate);
     }
 
     /**
-     * Stop simulation
+     * Stop simulation (cancels the animation loop; names still get rendered)
      */
     stopSimulation() {
-        if (this.simulationInterval) {
-            clearInterval(this.simulationInterval);
-            this.simulationInterval = null;
+        if (this.simulationFrame !== null) {
+            cancelAnimationFrame(this.simulationFrame);
+            this.simulationFrame = null;
         }
         this.isSimulating = false;
+        this.finishSimulation();
+    }
+
+    /**
+     * Render polygon names / debug fields for the label set that just settled
+     */
+    finishSimulation() {
+        if (this.pendingNamePolygons) {
+            const polygons = this.pendingNamePolygons;
+            this.pendingNamePolygons = null;
+            this.renderPolygonNames(polygons);
+        }
+        if (this.showDebugFields) {
+            this.renderDebugFields();
+        }
     }
 
     /**
@@ -1157,7 +1033,7 @@ export class LabelManager {
 
             if (position && polygon.name) {
                 // Build label content with optional area
-                let labelHtml = polygon.name;
+                let labelHtml = escapeHtml(polygon.name);
                 if (this.showAreaOnMap && this.areaFormatter && polygon.hull) {
                     const areaText = this.areaFormatter(polygon.hull);
                     labelHtml += `<br><span class="polygon-area-label">${areaText}</span>`;
@@ -1391,15 +1267,6 @@ export class LabelManager {
         }
 
         return t0 <= t1;
-    }
-
-    /**
-     * Trigger re-simulation when map is zoomed/panned
-     * This needs to be called by the map manager with polygon data
-     */
-    refreshLabels() {
-        // This method is kept for compatibility
-        // The map manager will call updateAllLabels instead
     }
 
     /**

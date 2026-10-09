@@ -8,6 +8,11 @@ export async function parseGPXFile(file) {
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(text, 'text/xml');
 
+    // DOMParser reports XML errors as a <parsererror> element instead of throwing
+    if (xmlDoc.getElementsByTagName('parsererror').length > 0) {
+        throw new Error('Not a valid GPX/XML file');
+    }
+
     const points = [];
 
     // Parse track points (trkpt)
@@ -44,6 +49,10 @@ export async function parseGPXFile(file) {
         if (!isNaN(lat) && !isNaN(lon)) {
             points.push({ lat, lon });
         }
+    }
+
+    if (points.length === 0) {
+        throw new Error('No track, route or waypoint coordinates found');
     }
 
     return points;
