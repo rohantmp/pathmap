@@ -1,4 +1,9 @@
-const STORAGE_KEY = 'pathmap_session';
+// v2 keeps its own key so it never rewrites the session of the v1 build served at the
+// parent path (same origin, same localStorage). On first run v2 is seeded from v1's session.
+const STORAGE_KEY = 'pathmap_session_v2';
+const LEGACY_STORAGE_KEY = 'pathmap_session';
+
+export { STORAGE_KEY, LEGACY_STORAGE_KEY };
 
 /**
  * Save session to localStorage
@@ -17,7 +22,14 @@ export function saveToLocalStorage(state) {
  */
 export function loadFromLocalStorage() {
     try {
-        const serialized = localStorage.getItem(STORAGE_KEY);
+        let serialized = localStorage.getItem(STORAGE_KEY);
+        if (serialized === null) {
+            // First run of v2 on this browser: start from the v1 session (read-only copy)
+            serialized = localStorage.getItem(LEGACY_STORAGE_KEY);
+            if (serialized !== null) {
+                localStorage.setItem(STORAGE_KEY, serialized);
+            }
+        }
         if (serialized) {
             return JSON.parse(serialized);
         }

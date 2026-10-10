@@ -150,6 +150,9 @@ function init() {
     // Set up the export dialog
     setupExportDialog();
 
+    // When served as the /v2/ preview beside the deployed v1, offer a way back
+    setupVersionLink();
+
     // Persist the map position when the user pans/zooms (debounced)
     let mapStateSaveTimer = null;
     mapManager.map.on('moveend', () => {
@@ -158,6 +161,18 @@ function init() {
     });
 
     renderPolygonList();
+}
+
+/**
+ * The dual deploy serves the released v1 at the parent path and this build at /v2/.
+ */
+function setupVersionLink() {
+    // Decided from the URL, not the build: the single-file build uses a relative base ("./")
+    const link = document.getElementById('version-link');
+    const match = window.location.pathname.match(/^(.*\/)v2\/(?:index\.html)?$/);
+    if (!link || !match) return;
+    link.href = match[1];
+    link.hidden = false;
 }
 
 /**

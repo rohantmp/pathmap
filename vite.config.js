@@ -5,7 +5,8 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 const emptyModule = fileURLToPath(new URL('./shims/empty-module.js', import.meta.url));
 
 export default defineConfig({
-  base: '/pathmap/',  // GitHub repository name
+  // GitHub repository name; the dual deploy builds v2 with PATHMAP_BASE=/pathmap/v2/
+  base: process.env.PATHMAP_BASE || '/pathmap/',
   plugins: [viteSingleFile()],
   resolve: {
     alias: {

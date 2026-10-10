@@ -1430,3 +1430,21 @@ body {
         align-items: stretch;
     }
 }
+
+/* "back to v1" link shown only when served as the /v2/ preview */
+.version-link {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #3498db;
+    text-decoration: none;
+    margin-top: 0.15rem;
+}
+
+.version-link:hover {
+    text-decoration: underline;
+}
+
+.version-link[hidden] {
+    display: none;
+}

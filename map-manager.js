@@ -641,12 +641,15 @@ export class MapManager {
             L.DomEvent.stopPropagation(e);
         });
 
+        let lastPointerType = 'mouse';
         const tryDelete = () => {
             if (this.vertexMarkers.length > 3) { // Keep at least 3 vertices
                 this.deleteVertex(this.vertexMarkers.indexOf(marker));
-                // A touch long-press ends with a synthetic click; keep it from hitting the midpoint
-                // handle that now sits where the vertex was
-                this.ignoreMidpointClicksUntil = performance.now() + 700;
+                if (lastPointerType !== 'mouse') {
+                    // A touch long-press ends with a synthetic click; keep it from hitting the
+                    // midpoint handle that now sits where the vertex was
+                    this.ignoreMidpointClicksUntil = performance.now() + 700;
+                }
             }
         };
 
@@ -664,6 +667,7 @@ export class MapManager {
         }
 
         element.addEventListener('pointerdown', (e) => {
+            lastPointerType = e.pointerType || 'mouse';
             if (e.button === 2) {
                 // Handled by the contextmenu listener
                 return;
