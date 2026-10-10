@@ -7,6 +7,7 @@
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     background: #f5f5f5;
 }
@@ -14,6 +15,7 @@ body {
 .container {
     display: flex;
     height: 100vh;
+    height: 100dvh;
 }
 
 /* Sidebar */
@@ -839,7 +841,7 @@ body {
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.5);
-    z-index: 998;
+    z-index: 1100;
 }
 
 .mobile-overlay.active {
@@ -912,6 +914,11 @@ body {
 /* Leader lines (created by LabelManager) */
 
 /* Vertex Edit Mode */
+.vertex-marker,
+.midpoint-marker {
+    touch-action: none;
+}
+
 .vertex-marker {
     cursor: move;
     transition: stroke-width 0.15s ease, fill-opacity 0.15s ease;
@@ -964,7 +971,8 @@ body {
         width: 85%;
         max-width: 350px;
         height: 100vh;
-        z-index: 999;
+        height: 100dvh;
+        z-index: 1200;
         transform: translateX(-100%);
         border-right: 1px solid #e0e0e0;
         box-shadow: 2px 0 12px rgba(0, 0, 0, 0.1);
@@ -981,10 +989,89 @@ body {
     .map-container {
         width: 100%;
         height: 100vh;
+        height: 100dvh;
     }
 
     .mobile-menu-toggle {
         display: flex;
+    }
+
+    /* The hamburger sits over the sidebar header once the drawer is open; hide it and use the × instead */
+    .sidebar.active ~ .map-container .mobile-menu-toggle {
+        display: none;
+    }
+
+    .sidebar-header .sidebar-close {
+        display: inline-flex;
+    }
+
+    .sidebar-header {
+        padding: 1rem 1.25rem;
+    }
+
+    /* Finger-sized targets */
+    .btn-icon,
+    .btn-delete-small,
+    .btn-transliterate-small {
+        min-width: 40px;
+        min-height: 40px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-small {
+        min-height: 40px;
+    }
+
+    .tab-button {
+        padding: 0.75rem 0.5rem;
+        white-space: nowrap;
+    }
+
+    .settings-tabs {
+        overflow-x: auto;
+    }
+
+    /* 16px stops iOS zooming the page when a field is focused */
+    .polygon-name,
+    .group-name,
+    .polygon-group-select,
+    .track-move-select,
+    .polygon-select,
+    #area-unit,
+    .field input[type="text"],
+    .field textarea,
+    .field select,
+    .export-rename-row input {
+        font-size: 16px;
+    }
+
+    .polygon-group-select {
+        max-width: none;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .modal-footer {
+        flex-wrap: wrap;
+    }
+
+    .modal-footer .btn {
+        flex: 1 1 auto;
+        min-height: 44px;
+    }
+
+    .modal-status {
+        flex-basis: 100%;
+    }
+
+    .leaflet-control-attribution {
+        font-size: 10px;
+    }
+
+    .leaflet-control-scale {
+        margin-bottom: 4px;
     }
 
     .sidebar-header h1 {
@@ -1058,6 +1145,26 @@ body {
     background: transparent;
     border: none;
     box-shadow: none;
+}
+
+/* Sidebar close (phones only) */
+.sidebar-close {
+    display: none;
+    font-size: 1.6rem;
+    line-height: 1;
+    width: 2.25rem;
+    height: 2.25rem;
+    align-items: center;
+    justify-content: center;
+}
+
+.empty-state .btn {
+    margin: 0.75rem auto 0.5rem;
+}
+
+.empty-state small {
+    display: block;
+    font-size: 0.75rem;
 }
 
 /* Export dialog */

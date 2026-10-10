@@ -5,6 +5,7 @@ import { mergeConvexHulls } from './convex-hull.js';
 import { saveToLocalStorage, loadFromLocalStorage, downloadSession, uploadSession } from './storage.js';
 import { exportComposite, exportKML, exportGeoJSON, exportTracksGeoJSON } from './export.js';
 import { transliterateSimplified } from './transliteration.js';
+import { EXAMPLE_SESSION, EXAMPLE_EXPORT_PREFS } from './example-session.js';
 
 // Application state
 let state = {
@@ -86,6 +87,7 @@ function init() {
         document.getElementById('session-file-input').click();
     });
     document.getElementById('session-file-input').addEventListener('change', handleUploadSession);
+    document.getElementById('load-example-session').addEventListener('click', loadExampleSession);
     document.getElementById('polygon-select').addEventListener('change', handlePolygonSelect);
     document.getElementById('exit-edit-mode').addEventListener('click', exitEditMode);
 
@@ -366,6 +368,9 @@ async function processGPXFiles(files) {
 
     renderPolygonList();
     saveState();
+    if (files.length > errors.length) {
+        closeSidebarOnMobile();
+    }
 
     // Show errors if any
     if (errors.length > 0) {
@@ -780,7 +785,12 @@ function renderPolygonList() {
     const container = document.getElementById('polygons-list');
 
     if (state.polygons.length === 0 && state.groups.length === 0) {
-        container.innerHTML = '<p class="empty-state">No polygons yet. Create one to get started!</p>';
+        container.innerHTML = `
+            <div class="empty-state">
+                <p>No polygons yet. Drop GPX files above to get started.</p>
+                <button type="button" class="btn btn-secondary" onclick="window.loadExampleSession()">Load example session</button>
+                <small>Six farm plots near Kanchipuram with tracks, groups and export text.</small>
+            </div>`;
         return;
     }
 
@@ -1012,6 +1022,7 @@ async function handleUploadSession(event) {
         colorIndex = state.polygons.length;
         restoreState();
         saveState();
+        closeSidebarOnMobile();
 
         alert('Session loaded successfully!');
     } catch (error) {
@@ -1172,6 +1183,54 @@ function handleDrop(event, targetType, targetId) {
 }
 
 // ---------------------------------------------------------------------------
+// Bundled example session
+// ---------------------------------------------------------------------------
+
+function loadExampleSession() {
+    if (state.polygons.length > 0 || state.groups.length > 0) {
+        if (!confirm('Loading the example replaces your current session (save it first if you want to keep it). Continue?')) {
+            return;
+        }
+    }
+
+    // Deep copy so the bundled data is never mutated
+    const example = JSON.parse(JSON.stringify(EXAMPLE_SESSION));
+    example.polygons.forEach(polygon => updatePolygonHull(polygon));
+
+    exitEditMode();
+    mapManager.clear();
+    state = example;
+    colorIndex = state.polygons.length;
+    exportRenames = {};
+
+    // Turn on the display options the example is meant to show off
+    // Coordinate labels crowd a phone screen, so only switch them on for larger layouts
+    setCheckbox('toggle-labels', !isMobileLayout(), (checked) => mapManager.setShowLabels(checked));
+    setCheckbox('toggle-area', true, (checked) => mapManager.setShowAreaOnMap(checked));
+    setCheckbox('toggle-group-bounds', true, (checked) => mapManager.setShowGroupBounds(checked));
+
+    restoreState();
+    saveState();
+
+    // Pre-fill the export dialog with front matter that suits the example
+    applyExportPrefs(EXAMPLE_EXPORT_PREFS);
+    try {
+        localStorage.setItem(EXPORT_PREFS_KEY, JSON.stringify(EXAMPLE_EXPORT_PREFS));
+    } catch (error) {
+        console.warn('Could not save export preferences:', error);
+    }
+
+    closeSidebarOnMobile();
+}
+
+function setCheckbox(id, checked, apply) {
+    const checkbox = document.getElementById(id);
+    if (!checkbox) return;
+    checkbox.checked = checked;
+    apply(checked);
+}
+
+// ---------------------------------------------------------------------------
 // Export dialog (PNG / PDF with front matter and export-only polygon renames)
 // ---------------------------------------------------------------------------
 
@@ -1200,18 +1259,20 @@ function setupExportDialog() {
 
     // Restore the last-used front matter and options
     try {
-        const prefs = JSON.parse(localStorage.getItem(EXPORT_PREFS_KEY) || 'null');
-        if (prefs && typeof prefs === 'object') {
-            if (typeof prefs.title === 'string') document.getElementById('export-title').value = prefs.title;
-            if (typeof prefs.notes === 'string') document.getElementById('export-notes').value = prefs.notes;
-            if (prefs.placement) document.getElementById('export-placement').value = prefs.placement;
-            if (typeof prefs.legend === 'boolean') document.getElementById('export-legend').checked = prefs.legend;
-            if (prefs.pageSize) document.getElementById('export-page-size').value = prefs.pageSize;
-            if (prefs.orientation) document.getElementById('export-orientation').value = prefs.orientation;
-        }
+        applyExportPrefs(JSON.parse(localStorage.getItem(EXPORT_PREFS_KEY) || 'null'));
     } catch (error) {
         console.warn('Could not restore export preferences:', error);
     }
+}
+
+function applyExportPrefs(prefs) {
+    if (!prefs || typeof prefs !== 'object') return;
+    if (typeof prefs.title === 'string') document.getElementById('export-title').value = prefs.title;
+    if (typeof prefs.notes === 'string') document.getElementById('export-notes').value = prefs.notes;
+    if (prefs.placement) document.getElementById('export-placement').value = prefs.placement;
+    if (typeof prefs.legend === 'boolean') document.getElementById('export-legend').checked = prefs.legend;
+    if (prefs.pageSize) document.getElementById('export-page-size').value = prefs.pageSize;
+    if (prefs.orientation) document.getElementById('export-orientation').value = prefs.orientation;
 }
 
 /**
@@ -1342,6 +1403,7 @@ async function runCompositeExport(format) {
 }
 
 // Expose functions to window for inline event handlers
+window.loadExampleSession = loadExampleSession;
 window.deletePolygon = deletePolygon;
 window.updatePolygonColor = updatePolygonColor;
 window.renamePolygon = renamePolygon;
@@ -1417,9 +1479,22 @@ function initSidebarResize() {
 }
 
 // Mobile menu toggle functionality
+function isMobileLayout() {
+    return window.matchMedia('(max-width: 768px)').matches;
+}
+
+function closeSidebarOnMobile() {
+    if (!isMobileLayout()) return;
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('mobile-overlay');
+    if (sidebar) sidebar.classList.remove('active');
+    if (overlay) overlay.classList.remove('active');
+}
+
 function initMobileMenu() {
     const sidebar = document.getElementById('sidebar');
     const menuToggle = document.getElementById('mobile-menu-toggle');
+    const closeButton = document.getElementById('sidebar-close');
     const overlay = document.getElementById('mobile-overlay');
 
     if (!menuToggle || !sidebar || !overlay) return;
@@ -1429,32 +1504,24 @@ function initMobileMenu() {
         overlay.classList.toggle('active');
     });
 
-    overlay.addEventListener('click', () => {
+    const close = () => {
         sidebar.classList.remove('active');
         overlay.classList.remove('active');
-    });
-
-    // Close sidebar when selecting a polygon or performing actions on mobile
-    if (window.innerWidth <= 768) {
-        // Add click handlers to important actions that should close the sidebar
-        const closeOnClick = [
-            'create-group',
-            'polygon-select',
-            'exit-edit-mode'
-        ];
-
-        closeOnClick.forEach(id => {
-            const element = document.getElementById(id);
-            if (element) {
-                element.addEventListener('click', () => {
-                    setTimeout(() => {
-                        sidebar.classList.remove('active');
-                        overlay.classList.remove('active');
-                    }, 100);
-                });
-            }
-        });
+    };
+    overlay.addEventListener('click', close);
+    if (closeButton) {
+        closeButton.addEventListener('click', close);
     }
+
+    // Actions whose result is on the map: close the sidebar so it is visible on phones.
+    // (Checked at click time, so rotating or resizing the window is handled.)
+    ['polygon-select', 'exit-edit-mode'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('change', () => setTimeout(closeSidebarOnMobile, 100));
+            element.addEventListener('click', () => setTimeout(closeSidebarOnMobile, 100));
+        }
+    });
 }
 
 // Initialize on DOM ready

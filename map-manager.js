@@ -21,23 +21,28 @@ export class MapManager {
         });
 
         // Add zoom control with position based on screen size
-        const zoomPosition = window.innerWidth <= 768 ? 'topright' : 'topleft';
+        const isSmallScreen = window.innerWidth <= 768;
+        const zoomPosition = isSmallScreen ? 'topright' : 'topleft';
         L.control.zoom({
             position: zoomPosition
         }).addTo(this.map);
 
         // Add Esri satellite layer with tile scaling beyond native zoom
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+            attribution: isSmallScreen
+                ? 'Tiles &copy; Esri'
+                : 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
             maxZoom: 22,
             maxNativeZoom: 18
         }).addTo(this.map);
 
-        // Add labels overlay (place names, roads, etc.)
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-            subdomains: 'abcd',
+        // Add labels overlay (place names, boundaries). Esri's reference layer pairs with World
+        // Imagery and needs no key; the CARTO raster labels used before now watermark the tiles
+        // with "API KEY REQUIRED".
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+            attribution: isSmallScreen ? '' : 'Labels &copy; Esri',
             maxZoom: 22,
+            maxNativeZoom: 19,
             pane: 'overlayPane'
         }).addTo(this.map);
 
@@ -81,8 +86,19 @@ export class MapManager {
         this.midpointMarkers = [];
         this.editingPolygonLayer = null;
 
+        // Vertex handles sit above every other marker (incl. midpoints and labels) so they always win a tap
+        this.map.createPane('editVertexPane').style.zIndex = 650;
+        this.editingPolygonRef = null;
+
         // Initialize label manager
         this.labelManager = new LabelManager(this.map);
+
+        // Midpoint handles depend on screen distance, so rebuild them after a zoom while editing
+        this.map.on('zoomend', () => {
+            if (this.editMode && this.editingPolygonRef) {
+                this.createMidpointMarkers(this.editingPolygonRef);
+            }
+        });
 
         // Refresh labels when map moves
         this.map.on('moveend', () => {
@@ -467,6 +483,12 @@ export class MapManager {
         this.editingPolygonId = polygonId;
         this.onVertexUpdate = onUpdate;
 
+        // Coordinate labels are draggable and sit over the handles; hide them while editing
+        this.labelsHiddenForEdit = this.labelManager.showLabels;
+        if (this.labelsHiddenForEdit) {
+            this.labelManager.setShowLabels(false);
+        }
+
         // Prevent context menu on the map while in edit mode
         this.contextMenuHandler = (e) => {
             L.DomEvent.preventDefault(e);
@@ -502,77 +524,8 @@ export class MapManager {
         }).addTo(this.map);
 
         // Create vertex markers (with higher z-index via markerPane)
-        polygon.hull.forEach((vertex, index) => {
-            const marker = L.circleMarker([vertex.lat, vertex.lon], {
-                radius: 12,  // Increased from 8 for better clickability
-                color: '#fff',
-                weight: 3,
-                fillColor: polygon.color,
-                fillOpacity: 1,
-                className: 'vertex-marker',
-                pane: 'markerPane'  // Use markerPane for higher z-index
-            }).addTo(this.map);
-
-            // Prevent click from propagating to map
-            marker.on('click', (e) => {
-                L.DomEvent.stopPropagation(e);
-            });
-
-            // Make vertex draggable and handle right-click deletion
-            marker.on('mousedown', (e) => {
-                L.DomEvent.stopPropagation(e);
-                L.DomEvent.preventDefault(e);
-
-                // Check for right-click (button 2)
-                if (e.originalEvent.button === 2) {
-                    // Delete vertex on right-click (index may have shifted after earlier deletes)
-                    if (this.vertexMarkers.length > 3) { // Keep at least 3 vertices
-                        this.deleteVertex(this.vertexMarkers.indexOf(marker));
-                    }
-                    return;
-                }
-
-                // Left-click drag handling
-                const map = this.map;
-                const originalMapDragging = map.dragging.enabled();
-
-                // Disable map dragging while dragging vertex
-                if (originalMapDragging) {
-                    map.dragging.disable();
-                }
-
-                const onMouseMove = (e) => {
-                    marker.setLatLng(e.latlng);
-                    this.updateEditingPolygon();
-                };
-
-                const onMouseUp = () => {
-                    map.off('mousemove', onMouseMove);
-                    map.off('mouseup', onMouseUp);
-
-                    // Re-enable map dragging
-                    if (originalMapDragging) {
-                        map.dragging.enable();
-                    }
-
-                    this.updateVertexPosition(this.vertexMarkers.indexOf(marker), marker.getLatLng());
-                };
-
-                map.on('mousemove', onMouseMove);
-                map.on('mouseup', onMouseUp);
-            });
-
-            // Also handle contextmenu for better compatibility
-            marker.on('contextmenu', (e) => {
-                L.DomEvent.stopPropagation(e);
-                L.DomEvent.preventDefault(e);
-                if (this.vertexMarkers.length > 3) { // Keep at least 3 vertices
-                    this.deleteVertex(this.vertexMarkers.indexOf(marker));
-                }
-                return false;
-            });
-
-            this.vertexMarkers.push(marker);
+        polygon.hull.forEach(vertex => {
+            this.vertexMarkers.push(this.createVertexMarker([vertex.lat, vertex.lon], polygon.color));
         });
 
         // Create midpoint markers for adding vertices
@@ -586,10 +539,17 @@ export class MapManager {
         // Clear existing midpoint markers
         this.midpointMarkers.forEach(m => this.map.removeLayer(m));
         this.midpointMarkers = [];
+        this.editingPolygonRef = polygon;
 
         const hull = polygon.hull;
+        const minEdgePixels = 60; // shorter edges would put the midpoint handle under its endpoint handles
         for (let i = 0; i < hull.length; i++) {
             const nextIndex = (i + 1) % hull.length;
+            const a = this.map.latLngToContainerPoint([hull[i].lat, hull[i].lon]);
+            const b = this.map.latLngToContainerPoint([hull[nextIndex].lat, hull[nextIndex].lon]);
+            if (a.distanceTo(b) < minEdgePixels) {
+                continue;
+            }
             const midLat = (hull[i].lat + hull[nextIndex].lat) / 2;
             const midLon = (hull[i].lon + hull[nextIndex].lon) / 2;
 
@@ -603,9 +563,12 @@ export class MapManager {
                 pane: 'markerPane'  // Use markerPane for higher z-index
             }).addTo(this.map);
 
-            // Add vertex on click
+            // Add vertex on click (ignored right after a long-press delete, see createVertexMarker)
             marker.on('click', (e) => {
                 L.DomEvent.stop(e);
+                if (this.ignoreMidpointClicksUntil && performance.now() < this.ignoreMidpointClicksUntil) {
+                    return;
+                }
                 this.addVertex(i + 1, { lat: midLat, lon: midLon });
             });
 
@@ -624,19 +587,6 @@ export class MapManager {
     }
 
     /**
-     * Update vertex position
-     */
-    updateVertexPosition(index, latLng) {
-        if (this.onVertexUpdate) {
-            const vertices = this.vertexMarkers.map(m => {
-                const ll = m.getLatLng();
-                return { lat: ll.lat, lon: ll.lng };
-            });
-            this.onVertexUpdate(this.editingPolygonId, vertices);
-        }
-    }
-
-    /**
      * Delete a vertex
      */
     deleteVertex(index) {
@@ -645,7 +595,23 @@ export class MapManager {
         this.map.removeLayer(this.vertexMarkers[index]);
         this.vertexMarkers.splice(index, 1);
         this.updateEditingPolygon();
+        this.emitVertices();
+    }
 
+    /**
+     * Add a vertex
+     */
+    addVertex(index, vertex) {
+        const marker = this.createVertexMarker([vertex.lat, vertex.lon], '#3498db');
+        this.vertexMarkers.splice(index, 0, marker);
+        this.updateEditingPolygon();
+        this.emitVertices();
+    }
+
+    /**
+     * Report the current vertex positions to the edit callback
+     */
+    emitVertices() {
         if (this.onVertexUpdate) {
             const vertices = this.vertexMarkers.map(m => {
                 const ll = m.getLatLng();
@@ -656,17 +622,18 @@ export class MapManager {
     }
 
     /**
-     * Add a vertex
+     * Create a draggable vertex marker. Uses Pointer Events so mouse, pen and touch all work:
+     * drag to move, right-click (mouse) or long-press (touch) to delete.
      */
-    addVertex(index, vertex) {
-        const marker = L.circleMarker([vertex.lat, vertex.lon], {
-            radius: 12,  // Increased from 8 for better clickability
+    createVertexMarker(latLng, fillColor) {
+        const marker = L.circleMarker(latLng, {
+            radius: 12,  // Large enough to grab with a finger
             color: '#fff',
             weight: 3,
-            fillColor: '#3498db',
+            fillColor: fillColor,
             fillOpacity: 1,
             className: 'vertex-marker',
-            pane: 'markerPane'  // Use markerPane for higher z-index
+            pane: 'editVertexPane'
         }).addTo(this.map);
 
         // Prevent click from propagating to map
@@ -674,70 +641,107 @@ export class MapManager {
             L.DomEvent.stopPropagation(e);
         });
 
-        // Add drag functionality and handle right-click deletion
-        marker.on('mousedown', (e) => {
-            L.DomEvent.stopPropagation(e);
-            L.DomEvent.preventDefault(e);
-
-            // Check for right-click (button 2)
-            if (e.originalEvent.button === 2) {
-                // Delete vertex on right-click
-                if (this.vertexMarkers.length > 3) {
-                    this.deleteVertex(this.vertexMarkers.indexOf(marker));
-                }
-                return;
+        const tryDelete = () => {
+            if (this.vertexMarkers.length > 3) { // Keep at least 3 vertices
+                this.deleteVertex(this.vertexMarkers.indexOf(marker));
+                // A touch long-press ends with a synthetic click; keep it from hitting the midpoint
+                // handle that now sits where the vertex was
+                this.ignoreMidpointClicksUntil = performance.now() + 700;
             }
+        };
 
-            // Left-click drag handling
-            const map = this.map;
-            const originalMapDragging = map.dragging.enabled();
-
-            // Disable map dragging while dragging vertex
-            if (originalMapDragging) {
-                map.dragging.disable();
-            }
-
-            const onMouseMove = (e) => {
-                marker.setLatLng(e.latlng);
-                this.updateEditingPolygon();
-            };
-
-            const onMouseUp = () => {
-                map.off('mousemove', onMouseMove);
-                map.off('mouseup', onMouseUp);
-
-                // Re-enable map dragging
-                if (originalMapDragging) {
-                    map.dragging.enable();
-                }
-
-                this.updateVertexPosition(index, marker.getLatLng());
-            };
-
-            map.on('mousemove', onMouseMove);
-            map.on('mouseup', onMouseUp);
-        });
-
-        // Also handle contextmenu for better compatibility
+        // Right-click deletion (mouse)
         marker.on('contextmenu', (e) => {
             L.DomEvent.stopPropagation(e);
             L.DomEvent.preventDefault(e);
-            if (this.vertexMarkers.length > 3) {
-                this.deleteVertex(this.vertexMarkers.indexOf(marker));
-            }
+            tryDelete();
             return false;
         });
 
-        this.vertexMarkers.splice(index, 0, marker);
-        this.updateEditingPolygon();
-
-        if (this.onVertexUpdate) {
-            const vertices = this.vertexMarkers.map(m => {
-                const ll = m.getLatLng();
-                return { lat: ll.lat, lon: ll.lng };
-            });
-            this.onVertexUpdate(this.editingPolygonId, vertices);
+        const element = marker.getElement();
+        if (!element || typeof element.setPointerCapture !== 'function') {
+            return marker;
         }
+
+        element.addEventListener('pointerdown', (e) => {
+            if (e.button === 2) {
+                // Handled by the contextmenu listener
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+
+            const map = this.map;
+            const mapDraggingWasEnabled = map.dragging.enabled();
+            if (mapDraggingWasEnabled) {
+                map.dragging.disable();
+            }
+
+            const startX = e.clientX;
+            const startY = e.clientY;
+            let moved = false;
+            let deleted = false;
+            let longPressTimer = null;
+
+            // Touch/pen: holding still for a moment deletes the vertex
+            if (e.pointerType !== 'mouse') {
+                longPressTimer = setTimeout(() => {
+                    longPressTimer = null;
+                    deleted = true;
+                    finish();
+                    tryDelete();
+                }, 650);
+            }
+
+            const onMove = (ev) => {
+                if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) {
+                    return;
+                }
+                moved = true;
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+                marker.setLatLng(map.mouseEventToLatLng(ev));
+                this.updateEditingPolygon();
+            };
+
+            const onUp = () => {
+                finish();
+                if (!deleted && moved) {
+                    this.emitVertices();
+                }
+            };
+
+            const finish = () => {
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+                element.removeEventListener('pointermove', onMove);
+                element.removeEventListener('pointerup', onUp);
+                element.removeEventListener('pointercancel', onUp);
+                try {
+                    element.releasePointerCapture(e.pointerId);
+                } catch (error) {
+                    // Capture may already be released
+                }
+                if (mapDraggingWasEnabled) {
+                    map.dragging.enable();
+                }
+            };
+
+            try {
+                element.setPointerCapture(e.pointerId);
+            } catch (error) {
+                // Fall back to element-level events without capture
+            }
+            element.addEventListener('pointermove', onMove);
+            element.addEventListener('pointerup', onUp);
+            element.addEventListener('pointercancel', onUp);
+        });
+
+        return marker;
     }
 
     /**
@@ -746,6 +750,12 @@ export class MapManager {
     exitEditMode() {
         this.editMode = false;
         this.editingPolygonId = null;
+        this.editingPolygonRef = null;
+
+        if (this.labelsHiddenForEdit) {
+            this.labelsHiddenForEdit = false;
+            this.labelManager.setShowLabels(true);
+        }
 
         // Remove context menu handler
         if (this.contextMenuHandler) {

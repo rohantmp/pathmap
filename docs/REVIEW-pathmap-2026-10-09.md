@@ -47,6 +47,11 @@ at the end.
     (debounced) on `moveend`.
 12. Track transliteration could blank a track name when the result was empty (the
     polygon version already guarded against this).
+13. **"API KEY REQUIRED" watermark on the map** (found 2026-10-10 in screenshots; affects
+    the live site and every PNG/PDF export): the CARTO raster place-name overlay
+    (`basemaps.cartocdn.com/rastertiles/voyager_only_labels`) now serves tiles stamped
+    with that text. Replaced by Esri's keyless *World Boundaries and Places* reference
+    layer, which is the designed companion to the World Imagery basemap already in use.
 
 ## Dead code removed
 
@@ -125,6 +130,77 @@ at the end.
 - Zoom buttons are excluded from captures; the compass, scale bar and attribution
   stay.
 
+## Mobile (added 2026-10-10)
+
+Reviewed at phone widths (iPhone 13 emulation, 390×844, and 360–430 px) and tablet
+portrait (iPad Mini, 768 px, which uses the same drawer layout). Screenshots were taken
+before and after the fixes with headless Chromium.
+
+### Fixed
+
+1. **Leaflet's attribution bar painted over the sidebar.** The drawer had `z-index: 999`
+   while Leaflet's control corners use 1000, so the four-line Esri credit sat on top of the
+   polygon list and covered the scale bar. The drawer and overlay now stack above the map
+   controls, and on screens ≤768 px the attribution is the short form ("Tiles © Esri,
+   © OSM © CARTO") at 10 px, which also frees the scale bar.
+2. **Hamburger button overlapped the "PathMap" title** when the drawer was open. The
+   hamburger hides while the drawer is open and a × close button appears in the drawer
+   header (the dimmed strip of map beside the drawer still closes it too).
+3. **Touch targets.** Icon buttons were ~28 px; on phones they are now ≥40 px, dialog
+   buttons ≥44 px, and the dialog footer no longer wraps its labels.
+4. **iOS focus zoom.** Text inputs and selects used 13–14 px fonts, which makes iOS Safari
+   zoom the page on focus; they are 16 px on phones now.
+5. **Viewport height.** `100vh` is taller than the visible area under mobile browser
+   chrome; `100dvh` is used with a `100vh` fallback for the shell, drawer and map.
+6. **Group select** was clipped ("No grou"); it flexes to the available width on phones.
+7. **The drawer hid the result of what you just did.** After dropping GPX files, loading a
+   session or the example, or picking a polygon to edit, the drawer now closes on phones.
+8. **Vertex editing was mouse-only.** The vertex markers use Pointer Events now (one code
+   path for mouse, pen and touch): drag to move, right-click (mouse) or long-press ~0.65 s
+   (touch) to delete, tap a midpoint to add. `touch-action: none` on the markers keeps
+   the browser from turning the drag into a pan. Vertex handles live in their own map pane above midpoints and
+   labels so they always win a tap; midpoint handles are only drawn on edges longer
+   than 60 px on screen (and rebuilt on zoom) so they never sit under an endpoint;
+   coordinate labels are hidden while editing and restored on exit; and the synthetic
+   click that ends a touch long-press is ignored for 0.7 s so it cannot re-add a vertex
+   through the midpoint that appears where the deleted vertex was. Verified with CDP
+   touch events in headless Chromium (drag, long-press delete, midpoint tap) and with
+   the mouse. Chrome swallows the first tap after a long-press (context-menu
+   dismissal); that is browser behaviour, not something the app can change.
+9. Settings tabs scroll horizontally if they ever exceed the drawer width (there are
+   five now, with the new Session tab).
+
+### Judgement calls (mobile)
+
+1. **Drawer vs. bottom sheet.** The 85 %-wide drawer covers the map entirely while open;
+   a half-height bottom sheet would let people see polygons while editing names. Larger
+   redesign, not done.
+2. **The upload zone is tall on phones** (~40 % of the first screen). Collapsing "Add
+   Polygons" automatically once a session has polygons would surface the list sooner.
+3. **Tablet portrait (768 px) uses the phone drawer layout.** A docked sidebar fits there
+   (iPad Mini is 744–768 px wide); the breakpoint could drop to ~700 px.
+4. **Label physics on small screens**: with 24 coordinate labels on a 390-px map the
+   labels crowd; "Show Labels" stays off by default, which is probably right on phones.
+5. **Long-press to delete** has no visual hint. A small toast or a "Delete vertex"
+   button in the Edit tab would make it discoverable.
+6. **Drag-to-reorder cards** uses HTML5 drag-and-drop, which does not work on touch
+   browsers; grouping still works through the group select, so this is a nice-to-have.
+7. **PNG/PDF exports from a phone** capture the phone-sized map (≈780 px wide at 2×),
+   which is small for print. An option to render the map at a fixed export width would
+   need an off-screen map instance.
+8. The export dialog on phones is a full-screen scroll; it could split into steps.
+
+## Example session (added 2026-10-10)
+
+`example-session.js` bundles a synthetic session (six farm plots south-west of
+Kanchipuram, 266 generated GPS points, ~11 KB): several GPX tracks per polygon, two groups
+plus one ungrouped plot, a Tamil name (கரும்பு வயல்) next to its transliteration, and
+front-matter text for the export dialog. "Load example session" appears in the empty
+polygon list and in the new Settings → Session tab. It asks for confirmation whenever a
+session already exists, replaces it, turns on labels, areas and group boundaries, closes
+the drawer on phones, and pre-fills the export dialog (also stored as the export prefs).
+Hulls are computed on load, so the bundled file carries only tracks.
+
 ## Verification
 
 - `npm run build` passes; output is the single file `dist/index.html`.
@@ -134,4 +210,10 @@ at the end.
   export dialog, PNG download (1860×2350), PDF download, map labels and session
   restored after an export with renames, remembered preferences, vertex deletion in
   edit mode, Clear All.
-- Not verified: touch devices, Safari, print output of the PDF, very large sessions.
+- Mobile smoke test (iPhone 13 emulation + CDP touch events, 2026-10-10): drawer
+  stacking, compact attribution, example session load and confirm, labels/areas/group
+  boundaries on, PDF export from the phone, 40 px targets, 16 px inputs, close button,
+  touch drag / long-press delete / midpoint tap in edit mode, and mouse drag +
+  right-click on desktop.
+- Not verified: real iOS Safari and Android Chrome (emulation only), print output of the
+  PDF, very large sessions.
