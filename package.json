@@ -6,7 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "build:dual": "bash scripts/build-dual.sh",
+    "preview": "vite preview",
+    "preview:dual": "node scripts/serve-static.js dist-dual 4173 127.0.0.1 /pathmap/",
+    "pretest": "vite build",
+    "test": "playwright test",
+    "test:v2": "PATHMAP_DIST=dist-dual PATHMAP_BASE=/pathmap/v2/ playwright test"
   },
   "dependencies": {
     "dom-to-image-more": "^3.7.2",
@@ -14,6 +19,7 @@
     "leaflet": "^1.9.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "vite": "^5.0.0",
     "vite-plugin-singlefile": "^2.3.0"
   }
