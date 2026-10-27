@@ -122,3 +122,16 @@ Colors are auto-assigned from COLOR_PALETTE array in main.js. The colorIndex cyc
 5. State saved to localStorage
 
 When moving tracks between polygons, both source and destination polygons have hulls recomputed and map layers updated.
+
+## Map editor (schema 2)
+
+Read `docs/EDITOR.md` for the current editor behavior and validation commands.
+`editor.js` owns drafts, explicit Apply/Cancel, undo/redo, source-path fidelity and
+placement modes. `geometry.js` validates simple rings and shared coverage, and
+`editor-state.js` migrates sessions and maintains stable vertex identity. Committed
+hulls may now be manually edited or path-following boundaries; do not automatically
+replace them when tracks change. GPX sample IDs are separate from shared graph
+node IDs. Pinned annotations and frame-relative legend placement are session data.
+`export.js` uses one page renderer for preview/PNG/PDF and supports whole-page
+grayscale. `npm test` runs geometry/state unit tests, builds, then runs desktop and
+mobile Playwright checks; `PATHMAP_CHROMIUM` selects an installed browser if needed.

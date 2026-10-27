@@ -1,9 +1,12 @@
 import 'leaflet/dist/leaflet.css';
+import { Editor } from './editor.js';
+import { migrateSession, cleanAnnotations } from './editor-state.js';
+import { clone } from './geometry.js';
 import { MapManager } from './map-manager.js';
 import { parseGPXFile, getGPXName } from './gpx-parser.js';
 import { mergeConvexHulls } from './convex-hull.js';
 import { saveToLocalStorage, loadFromLocalStorage, downloadSession, uploadSession } from './storage.js';
-import { exportComposite, exportKML, exportGeoJSON, exportTracksGeoJSON } from './export.js';
+import { renderComposite, exportComposite, exportKML, exportGeoJSON, exportTracksGeoJSON } from './export.js';
 import { transliterateSimplified } from './transliteration.js';
 import { EXAMPLE_SESSION, EXAMPLE_EXPORT_PREFS } from './example-session.js';
 
@@ -19,6 +22,8 @@ let state = {
 };
 
 let mapManager;
+let editor;
+let storageRecovery = false;
 
 // Color palette for auto-assigning colors
 const COLOR_PALETTE = [
@@ -52,9 +57,17 @@ function init() {
     }
 
     // Load saved session
-    const savedState = loadFromLocalStorage();
+    let savedState;
+    try {
+        savedState = loadFromLocalStorage();
+        if (savedState) savedState = migrateSession(savedState);
+    } catch (error) {
+        alert(`Stored session could not be opened: ${error.message} The stored copy is unchanged; autosave is paused until you Load a valid session or Clear All.`);
+        savedState = null;
+        storageRecovery = true;
+    }
     if (savedState) {
-        state = savedState;
+        state = migrateSession(savedState);
         // Ensure groups array exists for backwards compatibility
         if (!state.groups) {
             state.groups = [];
@@ -88,8 +101,7 @@ function init() {
     });
     document.getElementById('session-file-input').addEventListener('change', handleUploadSession);
     document.getElementById('load-example-session').addEventListener('click', loadExampleSession);
-    document.getElementById('polygon-select').addEventListener('change', handlePolygonSelect);
-    document.getElementById('exit-edit-mode').addEventListener('click', exitEditMode);
+    // Editor installs the polygon selection and draft controls.
 
     // Collapsible upload section
     const uploadToggle = document.getElementById('toggle-upload-section');
@@ -160,6 +172,17 @@ function init() {
         mapStateSaveTimer = setTimeout(saveState, 500);
     });
 
+    state = migrateSession(state);
+    window.pathmapBroadOutline = tracks => mergeConvexHulls(tracks.map(t => t.points));
+    window.pathmapCloseSidebar = closeSidebarOnMobile;
+    editor = new Editor({
+        map: mapManager,
+        getState: () => state,
+        replace: next => { state = migrateSession(next); },
+        save: saveState,
+        render: () => { updateMapVisibility(); renderPolygonList(); }
+    });
+    window.selectPolygonForEdit = id => editor.select(id);
     renderPolygonList();
 }
 
@@ -188,6 +211,7 @@ function escapeHtml(value) {
 }
 
 function populatePolygonSelect() {
+    if (editor?.draft) return;
     const select = document.getElementById('polygon-select');
     select.innerHTML = '<option value="">Select a polygon...</option>';
 
@@ -201,42 +225,9 @@ function populatePolygonSelect() {
     });
 }
 
-function handlePolygonSelect(event) {
-    const polygonId = parseInt(event.target.value);
-    if (!polygonId) {
-        mapManager.exitEditMode();
-        return;
-    }
-
-    const polygon = state.polygons.find(p => p.id === polygonId);
-    if (!polygon) return;
-
-    // Enter edit mode
-    mapManager.enterEditMode(polygonId, polygon, (id, newVertices) => {
-        // Update polygon hull with new vertices
-        const poly = state.polygons.find(p => p.id === id);
-        if (poly) {
-            poly.hull = newVertices;
-            updatePolygonOnMap(poly);
-
-            // Recreate midpoint markers
-            mapManager.createMidpointMarkers(poly);
-
-            // Save state
-            saveState();
-        }
-    });
-
-    // Zoom to polygon
-    if (polygon.hull && polygon.hull.length > 0) {
-        const bounds = L.latLngBounds(polygon.hull.map(v => [v.lat, v.lon]));
-        mapManager.map.fitBounds(bounds, { padding: [50, 50] });
-    }
-}
-
 function exitEditMode() {
-    mapManager.exitEditMode();
-    document.getElementById('polygon-select').value = '';
+    if (editor?.draft) editor.cancel();
+    else mapManager.exitEditMode();
 }
 
 function handleExportKML() {
@@ -266,14 +257,7 @@ function handleExportTracksGeoJSON() {
     exportTracksGeoJSON(polygonsToExport);
 }
 
-function getPolygonsToExport() {
-    // If a polygon is focused, export only that one
-    if (state.focusedPolygonId !== null) {
-        return state.polygons.filter(p => p.id === state.focusedPolygonId);
-    }
-    // Otherwise export all
-    return state.polygons;
-}
+function getPolygonsToExport() { return state.polygons.filter(isPolygonVisible); }
 
 function setupSettingsSliders() {
     const sliders = [
@@ -345,6 +329,7 @@ function createGroup() {
 }
 
 async function processGPXFiles(files) {
+    if(editor?.draft){editor.status('Apply or cancel the draft before adding source data.');return;}
     if (!files || files.length === 0) return;
 
     const errors = [];
@@ -363,7 +348,8 @@ async function processGPXFiles(files) {
                 tracks: [{
                     id: Date.now() + Math.random(),
                     name: name,
-                    points: points
+                    points: points,
+                segments: points.sourceSegments
                 }],
                 hull: null,
                 groupId: null,
@@ -640,6 +626,7 @@ function transliterateTrackName(polygonId, trackId) {
 }
 
 async function handleGPXUpload(polygonId, files) {
+    if(editor?.draft){editor.status('Apply or cancel the draft before adding source data.');return;}
     const polygon = state.polygons.find(p => p.id === polygonId);
     if (!polygon) return;
 
@@ -651,7 +638,8 @@ async function handleGPXUpload(polygonId, files) {
             polygon.tracks.push({
                 id: Date.now() + Math.random(), // Unique ID for track
                 name: name,
-                points: points
+                points: points,
+                segments: points.sourceSegments
             });
         } catch (error) {
             console.error('Error parsing GPX file:', error);
@@ -697,6 +685,13 @@ function moveTrack(trackId, fromPolygonId, toPolygonId) {
 }
 
 function updatePolygonHull(polygon) {
+    const nodeIds = new Set((polygon.hull || []).map(v => v.id));
+    const hasSharedNodes = state.polygons.some(p => p.id !== polygon.id &&
+        (p.hull || []).some(v => v.id && nodeIds.has(v.id)));
+    if (polygon.boundary?.manual || polygon.boundary?.follow || hasSharedNodes) {
+        polygon.boundary.sourceChanged = true;
+        return; // Source changes must never silently replace a committed or shared boundary.
+    }
     if (polygon.tracks.length === 0) {
         polygon.hull = null;
         return;
@@ -704,6 +699,7 @@ function updatePolygonHull(polygon) {
 
     const allPointArrays = polygon.tracks.map(t => t.points);
     polygon.hull = mergeConvexHulls(allPointArrays);
+    Object.assign(polygon, migrateSession({polygons:[polygon]}).polygons[0]);
 }
 
 function updatePolygonOnMap(polygon, skipFitBounds = false) {
@@ -779,6 +775,7 @@ function handleClearAll() {
     mapManager.clear();
 
     // Reset state
+    storageRecovery=false;
     state.polygons = [];
     state.groups = [];
     state.focusedPolygonId = null;
@@ -873,12 +870,13 @@ function renderPolygonCard(polygon, inGroup) {
     const isDimmed = (state.focusedPolygonId !== null && state.focusedPolygonId !== polygon.id) || polygon.hidden;
 
     return `
-    <div class="polygon-card ${isDimmed ? 'polygon-hidden' : ''} ${inGroup ? 'in-group' : ''}" data-polygon-id="${polygon.id}" draggable="true"
+    <div class="polygon-card ${isDimmed ? 'polygon-hidden' : ''} ${inGroup ? 'in-group' : ''} ${editor?.selected===polygon.id?'editor-selected':''}" data-polygon-id="${polygon.id}" draggable="true"
          ondragstart="window.handleDragStart(event, 'polygon', ${polygon.id})"
          ondragend="window.handleDragEnd(event)"
          ondragover="window.handleDragOver(event)"
          ondrop="window.handleDrop(event, 'polygon', ${polygon.id})">
         <div class="polygon-header">
+            <div class="editor-card-actions"><button class="btn btn-secondary btn-small edit-polygon" onclick="window.selectPolygonForEdit(${polygon.id})">Edit boundary</button><small>${polygon.boundary?.sourceChanged ? 'Source changed · boundary preserved' : polygon.boundary?.manual ? 'Manual boundary' : polygon.boundary?.follow ? 'Following path' : 'Broad outline'}${polygon.locked?' · Locked':''}</small></div>
             <div class="polygon-header-row">
                 <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
                 <input type="text" class="polygon-name" value="${escapeHtml(polygon.name)}"
@@ -978,12 +976,33 @@ function handleGPXUploadEvent(polygonId, files) {
     handleGPXUpload(polygonId, Array.from(files));
 }
 
-function saveState() {
+function saveState(record = true) {
+    if (storageRecovery) {
+        editor?.status("Autosave paused to protect the unreadable stored session. Load a valid file or Clear All to replace it.");
+        return false;
+    }
+    try {
+        state = migrateSession(state);
+    } catch (error) {
+        if (editor) {
+            state = clone(editor.history.current);
+            updateMapVisibility();
+            renderPolygonList();
+            editor.status(error.message);
+        } else console.error(error);
+        return false;
+    }
+    cleanAnnotations(state);
     state.mapState = mapManager.getMapState();
-    saveToLocalStorage(state);
+    const persisted=saveToLocalStorage(state);
+    if(record) editor?.changed();
+    if(!persisted)editor?.status('Could not auto-save. Use Save to download a backup.');
+    return persisted;
 }
 
 function restoreState() {
+    state = migrateSession(state);
+    mapManager.labelManager.placements = state.annotations;
     // Restore polygons on map (respecting hidden/focus flags)
     updateMapVisibility();
 
@@ -998,6 +1017,7 @@ function restoreState() {
 }
 
 function handleDownloadSession() {
+    if(editor?.draft) { editor.status("Apply or cancel the draft before saving a session."); return; }
     state.mapState = mapManager.getMapState();
     downloadSession(state);
 }
@@ -1014,12 +1034,16 @@ async function handleUploadSession(event) {
             throw new Error('Invalid session file format');
         }
 
+        const checkedState = migrateSession(newState);
+
         // Clear current state
         exitEditMode();
         mapManager.clear();
 
         // Load new state
-        state = newState;
+        const validated = checkedState;
+        state = validated;
+        storageRecovery=false;
 
         // Ensure backwards compatibility
         if (!state.groups) {
@@ -1037,6 +1061,7 @@ async function handleUploadSession(event) {
         colorIndex = state.polygons.length;
         restoreState();
         saveState();
+        editor?.reset();
         closeSidebarOnMobile();
 
         alert('Session loaded successfully!');
@@ -1214,7 +1239,7 @@ function loadExampleSession() {
 
     exitEditMode();
     mapManager.clear();
-    state = example;
+    state = migrateSession(example);
     colorIndex = state.polygons.length;
     exportRenames = {};
 
@@ -1226,6 +1251,8 @@ function loadExampleSession() {
 
     restoreState();
     saveState();
+
+    editor?.reset();
 
     // Pre-fill the export dialog with front matter that suits the example
     applyExportPrefs(EXAMPLE_EXPORT_PREFS);
@@ -1272,6 +1299,7 @@ function setupExportDialog() {
     document.getElementById('export-run-png').addEventListener('click', () => runCompositeExport('png'));
     document.getElementById('export-run-pdf').addEventListener('click', () => runCompositeExport('pdf'));
 
+    document.getElementById('export-preview-button').addEventListener('click',()=>runCompositeExport('png',true));
     // Restore the last-used front matter and options
     try {
         applyExportPrefs(JSON.parse(localStorage.getItem(EXPORT_PREFS_KEY) || 'null'));
@@ -1288,6 +1316,7 @@ function applyExportPrefs(prefs) {
     if (typeof prefs.legend === 'boolean') document.getElementById('export-legend').checked = prefs.legend;
     if (prefs.pageSize) document.getElementById('export-page-size').value = prefs.pageSize;
     if (prefs.orientation) document.getElementById('export-orientation').value = prefs.orientation;
+    if (prefs.appearance) document.getElementById('export-appearance').value = prefs.appearance;
 }
 
 /**
@@ -1326,6 +1355,8 @@ function openExportDialog(format) {
     pdfButton.classList.toggle('btn-secondary', format !== 'pdf');
 
     document.getElementById('export-status').textContent = '';
+    if (state.exportPrefs) applyExportPrefs(state.exportPrefs);
+    document.getElementById('export-preview-wrap').hidden = true;
     modal.hidden = false;
     document.getElementById('export-title').focus();
 }
@@ -1356,11 +1387,13 @@ function readExportForm() {
         placement: document.getElementById('export-placement').value,
         legend: document.getElementById('export-legend').checked,
         pageSize: document.getElementById('export-page-size').value,
-        orientation: document.getElementById('export-orientation').value
+        orientation: document.getElementById('export-orientation').value,
+        appearance: document.getElementById('export-appearance').value
     };
 }
 
-async function runCompositeExport(format) {
+async function runCompositeExport(format, preview = false) {
+    if (editor?.draft) { editor.status("Apply or cancel the draft before export."); return; }
     const modalCard = document.querySelector('#export-modal .modal');
     const status = document.getElementById('export-status');
     if (modalCard.classList.contains('is-busy')) return;
@@ -1381,9 +1414,9 @@ async function runCompositeExport(format) {
         }
     });
 
-    const legend = form.legend
-        ? polygons.map(polygon => ({
-            name: overrides[polygon.id] !== undefined ? overrides[polygon.id] : polygon.name,
+    const legend = form.legend && !state.layout.legend.onMap
+        ? polygons.map((polygon,index) => ({
+            name: `${form.appearance==='grayscale'?(index+1)+' · ':''}${overrides[polygon.id] !== undefined ? overrides[polygon.id] : polygon.name}`,
             color: polygon.color,
             area: mapManager.formatArea(mapManager.calculateArea(polygon.hull))
         }))
@@ -1392,10 +1425,14 @@ async function runCompositeExport(format) {
     modalCard.classList.add('is-busy');
     status.textContent = `Rendering ${format.toUpperCase()}…`;
 
+    if(form.appearance==='grayscale')polygons.forEach((p,i)=>{overrides[p.id]=`${i+1} · ${overrides[p.id]??p.name}`});
+    const key=document.getElementById('map-key'),wasHidden=key.hidden,keyHtml=key.innerHTML;
+    if(!form.legend)key.hidden=true;
+    else key.querySelectorAll(':scope > div > span').forEach((span,i)=>{if(polygons[i])span.textContent=`${i+1} · ${exportRenames[polygons[i].id]??polygons[i].name}`});
     // Relabel the map for the duration of the capture only
     const restoreNames = mapManager.applyNameOverrides(overrides);
     try {
-        await exportComposite({
+        const page = await (preview ? renderComposite : exportComposite)({
             format,
             mapElement: document.getElementById('map'),
             frontMatter: { title: form.title, body: form.notes },
@@ -1403,16 +1440,21 @@ async function runCompositeExport(format) {
             legend,
             pageSize: form.pageSize,
             orientation: form.orientation,
+            appearance: form.appearance,
             filenameBase: form.title && form.title.trim() ? form.title : 'pathmap-export'
         });
-        status.textContent = '';
-        closeExportDialog();
+        state.exportPrefs = form;
+        saveState();
+        status.textContent = preview ? 'Preview matches the export page. Refresh after changing options.' : '';
+        if(preview){document.getElementById('export-preview-image').src=page.dataUrl;document.getElementById('export-preview-wrap').hidden=false;}
+        else closeExportDialog();
     } catch (error) {
         console.error('Export failed:', error);
         status.textContent = '';
         alert(error.message);
     } finally {
         restoreNames();
+        key.hidden=wasHidden;key.innerHTML=keyHtml;
         modalCard.classList.remove('is-busy');
     }
 }

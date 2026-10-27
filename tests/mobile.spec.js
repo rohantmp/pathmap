@@ -85,7 +85,7 @@ test('touch vertex editing: drag, long-press delete, midpoint tap', async ({ pag
   for (let i = 1; i <= 8; i++) { await touch('touchMove', a.x + i * 8, a.y + i * 6); await page.waitForTimeout(20); }
   await touch('touchEnd', a.x + 64, a.y + 48);
   await page.waitForTimeout(400);
-  expect(await hull()).not.toBe(before);
+  expect(await hull()).toBe(before); // Draft is not auto-saved before Apply.
   expect(await handles.count()).toBe(n0);
 
   const b = await pickHandle(page, '#map .vertex-marker');
@@ -103,4 +103,6 @@ test('touch vertex editing: drag, long-press delete, midpoint tap', async ({ pag
     await page.touchscreen.tap(mid.x, mid.y);
   }
   await expect(handles).toHaveCount(n0);
+  await page.tap('#map-draft-apply');
+  expect(await hull()).not.toBe(before);
 });

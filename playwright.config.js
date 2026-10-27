@@ -19,12 +19,13 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     acceptDownloads: true,
+    launchOptions: process.env.PATHMAP_CHROMIUM ? { executablePath: process.env.PATHMAP_CHROMIUM } : {},
     trace: 'retain-on-failure',
   },
   // Exposed to the specs
   metadata: { basePath: BASE_PATH },
   projects: [
-    { name: 'desktop', testMatch: /desktop\.spec\.js/, use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } },
+    { name: 'desktop', testMatch: /(?:desktop|editor)\.spec\.js/, use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } },
     { name: 'mobile', testMatch: /mobile\.spec\.js/, use: { ...devices['iPhone 13'], browserName: 'chromium' } },
   ],
   webServer: {

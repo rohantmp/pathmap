@@ -11,7 +11,7 @@ export const fixture = (name) => path.join(here, 'fixtures', name);
 export async function openApp(page, { seedStorage } = {}) {
   await page.addInitScript((seed) => {
     if (seed) {
-      Object.entries(seed).forEach(([k, v]) => localStorage.setItem(k, v));
+      Object.entries(seed).forEach(([k, v]) => { if (localStorage.getItem(k) === null) localStorage.setItem(k, v); });
     }
   }, seedStorage || null);
   await page.goto(BASE_PATH, { waitUntil: 'load' });

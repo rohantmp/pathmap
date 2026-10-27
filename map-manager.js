@@ -1,4 +1,5 @@
 import L from 'leaflet';
+import { uid } from './geometry.js';
 import { LabelManager } from './label-manager.js';
 
 function escapeHtml(value) {
@@ -146,11 +147,15 @@ export class MapManager {
 
         // Create polygon
         const polygon = L.polygon(latLngs, {
+            className: 'boundary-polygon',
             color: color,
             fillColor: color,
             fillOpacity: 0.2,
             weight: 2
         }).addTo(layerGroup);
+
+        polygon.getElement()?.setAttribute('data-polygon-id',String(polygonId));
+        polygon.on('click', () => { if (!this.editMode) this.onSelect?.(polygonId); });
 
         // Calculate area and bind tooltip (name comes from the stored data so export renames show up)
         const area = this.calculateArea(hull);
@@ -523,9 +528,12 @@ export class MapManager {
             interactive: false  // Make non-interactive so it doesn't block vertex clicks
         }).addTo(this.map);
 
-        // Create vertex markers (with higher z-index via markerPane)
-        polygon.hull.forEach(vertex => {
-            this.vertexMarkers.push(this.createVertexMarker([vertex.lat, vertex.lon], polygon.color));
+        // Numbered, focusable handles connect local path-section controls to the map.
+        polygon.hull.forEach((vertex,index) => {
+            const marker=this.createVertexMarker([vertex.lat,vertex.lon],polygon.color,vertex);
+            marker.bindTooltip(`Vertex ${index+1}${vertex.pinned?' · pinned':''}`,{direction:'top'});
+            marker.getElement()?.setAttribute('aria-label',`Boundary vertex ${index+1}; arrows move, Delete removes`);
+            this.vertexMarkers.push(marker);
         });
 
         // Create midpoint markers for adding vertices
@@ -540,9 +548,16 @@ export class MapManager {
         this.midpointMarkers.forEach(m => this.map.removeLayer(m));
         this.midpointMarkers = [];
         this.editingPolygonRef = polygon;
+        // Insertions/deletions change numbering, but stable IDs and keyboard focus stay put.
+        this.vertexMarkers.forEach((marker,index) => {
+            const text=`Vertex ${index+1}${marker.vertex?.pinned?' · pinned':''}`;
+            if(marker.getTooltip())marker.setTooltipContent(text);
+            else marker.bindTooltip(text,{direction:'top'});
+            marker.getElement()?.setAttribute('aria-label',`Boundary vertex ${index+1}; arrows move, Delete removes`);
+        });
 
         const hull = polygon.hull;
-        const minEdgePixels = 60; // shorter edges would put the midpoint handle under its endpoint handles
+        const minEdgePixels = window.matchMedia('(pointer: coarse)').matches ? 80 : 60; // shorter edges would put the midpoint handle under its endpoint handles
         for (let i = 0; i < hull.length; i++) {
             const nextIndex = (i + 1) % hull.length;
             const a = this.map.latLngToContainerPoint([hull[i].lat, hull[i].lon]);
@@ -602,7 +617,7 @@ export class MapManager {
      * Add a vertex
      */
     addVertex(index, vertex) {
-        const marker = this.createVertexMarker([vertex.lat, vertex.lon], '#3498db');
+        const marker = this.createVertexMarker([vertex.lat, vertex.lon], '#3498db', {...vertex, id:uid()});
         this.vertexMarkers.splice(index, 0, marker);
         this.updateEditingPolygon();
         this.emitVertices();
@@ -615,7 +630,7 @@ export class MapManager {
         if (this.onVertexUpdate) {
             const vertices = this.vertexMarkers.map(m => {
                 const ll = m.getLatLng();
-                return { lat: ll.lat, lon: ll.lng };
+                return { ...m.vertex, lat: ll.lat, lon: ll.lng };
             });
             this.onVertexUpdate(this.editingPolygonId, vertices);
         }
@@ -625,9 +640,9 @@ export class MapManager {
      * Create a draggable vertex marker. Uses Pointer Events so mouse, pen and touch all work:
      * drag to move, right-click (mouse) or long-press (touch) to delete.
      */
-    createVertexMarker(latLng, fillColor) {
+    createVertexMarker(latLng, fillColor, vertex = {}) {
         const marker = L.circleMarker(latLng, {
-            radius: 12,  // Large enough to grab with a finger
+            radius: window.matchMedia('(pointer: coarse)').matches ? 22 : 16,
             color: '#fff',
             weight: 3,
             fillColor: fillColor,
@@ -636,11 +651,23 @@ export class MapManager {
             pane: 'editVertexPane'
         }).addTo(this.map);
 
+        marker.vertex = {...vertex, id:vertex.id || uid()};
+
         // Prevent click from propagating to map
         marker.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
         });
 
+        const element = marker.getElement();
+        element.setAttribute('tabindex','0');
+        element.setAttribute('role','button');
+        element.setAttribute('aria-label','Boundary vertex; arrows move, Delete removes');
+        element.addEventListener('keydown', e => {
+            e.stopPropagation();
+            this.onVertexSelect?.(this.vertexMarkers.indexOf(marker));
+            if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();this.deleteVertex(this.vertexMarkers.indexOf(marker));}
+            else if(e.key.startsWith('Arrow')){e.preventDefault();const p=this.map.latLngToContainerPoint(marker.getLatLng()),step=e.shiftKey?10:1;p.x+=e.key==='ArrowRight'?step:e.key==='ArrowLeft'?-step:0;p.y+=e.key==='ArrowDown'?step:e.key==='ArrowUp'?-step:0;marker.setLatLng(this.map.containerPointToLatLng(p));this.updateEditingPolygon();this.emitVertices();}
+        });
         let lastPointerType = 'mouse';
         const tryDelete = () => {
             if (this.vertexMarkers.length > 3) { // Keep at least 3 vertices
@@ -661,13 +688,13 @@ export class MapManager {
             return false;
         });
 
-        const element = marker.getElement();
         if (!element || typeof element.setPointerCapture !== 'function') {
             return marker;
         }
 
         element.addEventListener('pointerdown', (e) => {
             lastPointerType = e.pointerType || 'mouse';
+            this.onVertexSelect?.(this.vertexMarkers.indexOf(marker));
             if (e.button === 2) {
                 // Handled by the contextmenu listener
                 return;
@@ -681,6 +708,7 @@ export class MapManager {
                 map.dragging.disable();
             }
 
+            const originalPosition = marker.getLatLng();
             const startX = e.clientX;
             const startY = e.clientY;
             let moved = false;
@@ -701,15 +729,24 @@ export class MapManager {
                 if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) {
                     return;
                 }
-                moved = true;
                 if (longPressTimer) {
                     clearTimeout(longPressTimer);
                     longPressTimer = null;
                 }
+                const previousPosition = marker.getLatLng();
                 marker.setLatLng(map.mouseEventToLatLng(ev));
+                const vertices = this.vertexMarkers.map(m => ({...m.vertex,lat:m.getLatLng().lat,lon:m.getLatLng().lng}));
+                if (this.onVertexPreview?.(vertices) === false) {
+                    marker.setLatLng(previousPosition);
+                    return; // Stop at the last valid shape, without recording a blocked gesture.
+                }
+                moved = true;
                 this.updateEditingPolygon();
             };
 
+            const onCancel = () => { marker.setLatLng(originalPosition); this.updateEditingPolygon(); moved=false; finish(); this.onVertexCancel?.(); };
+            const onKey = ev => {if(ev.key==='Escape'){ev.preventDefault();onCancel()}};
+            document.addEventListener('keydown',onKey);
             const onUp = () => {
                 finish();
                 if (!deleted && moved) {
@@ -724,7 +761,8 @@ export class MapManager {
                 }
                 element.removeEventListener('pointermove', onMove);
                 element.removeEventListener('pointerup', onUp);
-                element.removeEventListener('pointercancel', onUp);
+                element.removeEventListener('pointercancel', onCancel);
+                document.removeEventListener('keydown',onKey);
                 try {
                     element.releasePointerCapture(e.pointerId);
                 } catch (error) {
@@ -742,7 +780,7 @@ export class MapManager {
             }
             element.addEventListener('pointermove', onMove);
             element.addEventListener('pointerup', onUp);
-            element.addEventListener('pointercancel', onUp);
+            element.addEventListener('pointercancel', onCancel);
         });
 
         return marker;

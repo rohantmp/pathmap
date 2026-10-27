@@ -55,6 +55,30 @@ export async function parseGPXFile(file) {
         throw new Error('No track, route or waypoint coordinates found');
     }
 
+    const read = (parent) =>
+      Array.from(parent.querySelectorAll("trkpt, rtept")).map((node) => ({
+        lat: Number.parseFloat(node.getAttribute("lat")),
+        lon: Number.parseFloat(node.getAttribute("lon")),
+      }));
+    if (points.some((p) => Math.abs(p.lat) > 90 || Math.abs(p.lon) > 180))
+      throw new Error("GPX coordinate outside latitude/longitude range");
+    // Preserve trkseg/rte breaks separately from the legacy flattened points used for broad hulls.
+    points.sourceSegments = Array.from(xmlDoc.querySelectorAll("trkseg, rte"))
+      .map(read)
+      .filter((seg) => seg.length);
+    if (!points.sourceSegments.length)
+      points.sourceSegments = [points.map((p) => ({ ...p }))];
+    for (const seg of points.sourceSegments)
+      if (
+        seg.some(
+          (p) =>
+            !Number.isFinite(p.lat) ||
+            !Number.isFinite(p.lon) ||
+            Math.abs(p.lat) > 90 ||
+            Math.abs(p.lon) > 180,
+        )
+      )
+        throw new Error("Invalid ordered GPX coordinate");
     return points;
 }
 

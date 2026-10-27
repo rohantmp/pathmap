@@ -1448,3 +1448,280 @@ body {
 .version-link[hidden] {
     display: none;
 }
+
+/* Map editor modes keep selection, draft status and commit actions in reach. */
+#editor-toolbar {
+    position: absolute;
+    z-index: 800;
+    top: 12px;
+    left: 55px;
+    right: 68px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 9px;
+    background: #fffffff5;
+    border: 1px solid #dbe5ed;
+    border-radius: 9px;
+    box-shadow: 0 3px 16px #20394c24;
+}
+#editor-toolbar .btn {
+    padding: 8px 11px;
+    font-size: 12px;
+}
+#editor-status {
+    flex-basis: 100%;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #405b6d;
+}
+#draft-map-actions {
+    display: flex;
+    gap: 6px;
+}
+#draft-map-actions[hidden] {
+    display: none;
+}
+.editor-row {
+    display: flex;
+    gap: 6px;
+    margin: 10px 0;
+    flex-wrap: wrap;
+}
+.editor-row label {
+    flex: 1;
+    min-width: 75px;
+}
+.editor-row input {
+    width: 100%;
+}
+.editor-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.editor-card-actions small {
+    font-size: 10px;
+    color: #657c8d;
+}
+.editor-draft-tools details {
+    border-top: 1px solid #dce5ed;
+    margin-top: 14px;
+    padding-top: 12px;
+}
+.editor-draft-tools summary {
+    cursor: pointer;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+.editor-draft-tools input[type="number"],
+.editor-draft-tools select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccd7df;
+    border-radius: 5px;
+    margin: 5px 0 8px;
+}
+.editor-draft-tools .btn {
+    margin: 3px 0;
+}
+#draft-info {
+    font-size: 12px;
+    line-height: 1.5;
+    color: #28678f;
+}
+.editor-label-options {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 18px;
+}
+.editor-label-options select {
+    padding: 9px;
+}
+.map-key {
+    position: absolute;
+    z-index: 700;
+    background: #fffffff5;
+    border: 1px solid #cbd8e2;
+    border-radius: 7px;
+    padding: 14px;
+    box-shadow: 0 3px 14px #0002;
+    font: 12px/1.7 system-ui;
+    max-width: 270px;
+    max-height: 45%;
+    overflow: auto;
+    touch-action: none;
+}
+.map-key[hidden] {
+    display: none;
+}
+.map-key strong {
+    display: block;
+    margin-bottom: 5px;
+}
+.map-key strong span {
+    float: right;
+    margin-left: 15px;
+}
+.map-key > div {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.key-swatch {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 13px;
+    height: 13px;
+    border: 1px solid #555;
+    border-radius: 2px;
+}
+.map-key.placing {
+    cursor: grab;
+    border: 2px solid #2986bd;
+}
+.polygon-name-content {
+    background: #fffffff0 !important;
+    color: #20394c !important;
+    border: 1px solid #d0dce5;
+    text-shadow: none !important;
+}
+.boundary-draft #polygons-list .edit-polygon {
+    outline: 1px solid #bddced;
+}
+#place-labels[aria-pressed="true"] {
+    background: #dff1fe;
+    border-color: #247fc0;
+}
+.vertex-marker:focus {
+    outline: none;
+    stroke: #102e43;
+    stroke-width: 5;
+}
+.export-preview-wrap {
+    background: #e4eaf0;
+    padding: 16px;
+    margin: 10px 0;
+    border-radius: 6px;
+}
+.export-preview-wrap img {
+    display: block;
+    width: 100%;
+    max-height: 600px;
+    object-fit: contain;
+}
+.export-preview-wrap[hidden] {
+    display: none;
+}
+.export-mono .key-pattern-0 {
+    background: repeating-linear-gradient(
+        135deg,
+        #fff 0 3px,
+        #222 3px 4px
+    ) !important;
+}
+.export-mono .key-pattern-1 {
+    background: radial-gradient(#111 22%, white 26%) 0 0/5px 5px !important;
+}
+.export-mono .key-pattern-2 {
+    background: repeating-linear-gradient(
+        0deg,
+        #fff 0 4px,
+        #333 4px 5px
+    ) !important;
+}
+.export-mono .key-pattern-3 {
+    background: repeating-linear-gradient(
+        90deg,
+        #fff 0 4px,
+        #333 4px 5px
+    ) !important;
+}
+@media (max-width: 768px) {
+    #editor-toolbar {
+        top: 62px;
+        left: 9px;
+        right: 9px;
+        padding: 7px;
+    }
+    #editor-toolbar .btn {
+        min-height: 40px;
+    }
+    #editor-status {
+        font-size: 11px;
+    }
+    #editor-toolbar .btn {
+        padding: 7px 9px;
+        font-size: 11px;
+    }
+    .editor-draft-tools .btn {
+        min-height: 44px;
+    }
+    .map-key {
+        max-width: 210px;
+        font-size: 11px;
+    }
+    #draft-map-actions .btn {
+        min-width: 70px;
+    }
+}
+
+.polygon-name-label,
+.vertex-label {
+    width: max-content !important;
+    height: auto !important;
+}
+.polygon-name-content {
+    pointer-events: auto;
+}
+
+.editor-selected {
+    border-color: #287fba !important;
+    box-shadow: 0 0 0 1px #287fba;
+}
+.editor-draft-tools input[type="number"] {
+    font-size: 16px;
+}
+.editor-row label {
+    font-size: 12px;
+}
+
+.map-key {
+    width: 240px;
+    max-width: calc(100% - 20px);
+}
+.map-key > div > span {
+    overflow-wrap: anywhere;
+}
+.map-key:not(.placing) strong span,
+.export-capturing .map-key strong span {
+    display: none;
+}
+.export-capturing .map-key {
+    border: 1px solid #aaa;
+    cursor: default;
+}
+.gap-label {
+    color: #b12020;
+    border-color: #d63636;
+    font-size: 11px;
+}
+.editor-draft-tools[hidden] {
+    display: none;
+}
+@media (max-width: 768px) {
+    #editor-toolbar .btn {
+        min-height: 44px;
+    }
+    .map-key {
+        width: 210px;
+    }
+}
+
+@media (max-width: 768px) {
+    .editor-draft-tools select,
+    #polygon-select {
+        font-size: 16px;
+    }
+}

@@ -17,6 +17,8 @@ function escapeHtml(value) {
 export class LabelManager {
     constructor(map) {
         this.map = map;
+        this.placements = {names:{},coordinates:{}};
+        this.placementMode = false;
         this.labels = []; // { vertexLatLng, labelLatLng, text, polygonId, vertexIndex }
         this.labelMarkers = new Map(); // key -> marker
         this.leaderLines = new Map(); // key -> { outline, line } polyline pair
@@ -49,6 +51,23 @@ export class LabelManager {
             eqCenter: 100,            // center repulsion strength
             eqFalloff: 3              // falloff exponent (higher = faster dropoff)
         };
+    }
+
+    bindPlacementKeys(marker, kind, key) {
+        const element=marker.getElement();
+        if(!element)return;
+        element.tabIndex=this.placementMode?0:-1;
+        element.dataset.placementKind=kind;
+        element.dataset.placementKey=String(key);
+        element.setAttribute('aria-label',kind==='names'?'Polygon name; arrow keys place':'Coordinate label; arrow keys place');
+        element.addEventListener('keydown',e=>{
+            if(!this.placementMode||!e.key.startsWith('Arrow'))return;
+            e.preventDefault();e.stopPropagation();
+            const p=this.map.latLngToContainerPoint(marker.getLatLng());
+            p.x+=e.key==='ArrowRight'?5:e.key==='ArrowLeft'?-5:0;
+            p.y+=e.key==='ArrowDown'?5:e.key==='ArrowUp'?-5:0;
+            const ll=this.map.containerPointToLatLng(p);this.onPlace?.(kind,key,{lat:ll.lat,lng:ll.lng});
+        });
     }
 
     /**
@@ -1029,7 +1048,8 @@ export class LabelManager {
                 return; // Skip this polygon if it's not visible
             }
 
-            const position = this.findPolygonNamePosition(polygon, this.labels.filter(l => l.polygonId === polygon.id));
+            const savedName = this.placements.names[polygon.id];
+            const position = savedName ? {lat:savedName.lat,lon:savedName.lng} : this.findPolygonNamePosition(polygon, this.labels.filter(l => l.polygonId === polygon.id));
 
             if (position && polygon.name) {
                 // Build label content with optional area
@@ -1046,9 +1066,14 @@ export class LabelManager {
                         iconSize: null,
                         iconAnchor: [0, 0]
                     }),
-                    interactive: false
+                    interactive: true,
+                    draggable: this.placementMode
                 }).addTo(this.map);
 
+                marker.on('click',()=>this.onSelect?.(polygon.id));
+                marker.on('dragstart',()=>this.stopSimulation());
+                marker.on('dragend',()=>{const ll=marker.getLatLng();this.onPlace?.('names',polygon.id,{lat:ll.lat,lng:ll.lng});});
+                this.bindPlacementKeys(marker,'names',polygon.id);
                 this.polygonNameMarkers.set(polygon.id, marker);
             }
         });
@@ -1108,7 +1133,7 @@ export class LabelManager {
                         iconSize: null,
                         iconAnchor: [0, 0]
                     }),
-                    draggable: true
+                    draggable: this.placementMode
                 }).addTo(this.map);
 
                 // Update label position when dragged
@@ -1131,6 +1156,8 @@ export class LabelManager {
                 // Mark as manually positioned when dragged
                 marker.on('dragend', (e) => {
                     this.manuallyPositioned.add(key);
+                    const ll=e.target.getLatLng();
+                    this.onPlace?.('coordinates',key,{lat:ll.lat,lng:ll.lng});
                 });
 
                 // Stop simulation when user starts dragging
@@ -1138,6 +1165,7 @@ export class LabelManager {
                     this.stopSimulation();
                 });
 
+                this.bindPlacementKeys(marker,'coordinates',key);
                 this.labelMarkers.set(key, marker);
 
                 // Hide if labels are disabled
@@ -1273,16 +1301,9 @@ export class LabelManager {
      * Update all labels for all polygons (called by map manager)
      */
     updateAllLabels(polygons) {
-        // Save manually positioned label coordinates before clearing
-        const savedPositions = new Map();
-        this.labels.forEach(label => {
-            if (this.manuallyPositioned.has(label.key)) {
-                savedPositions.set(label.key, {
-                    lat: label.labelLatLng.lat,
-                    lng: label.labelLatLng.lng
-                });
-            }
-        });
+        this.stopSimulation();
+        const savedPositions = new Map(Object.entries(this.placements.coordinates));
+        this.manuallyPositioned = new Set(savedPositions.keys());
 
         // Clear all existing labels
         this.labels = [];
@@ -1376,7 +1397,7 @@ export class LabelManager {
                 // Mark this vertex as labeled with its angle for comparison
                 labeledVertices.push({ lat: vertex.lat, lon: vertex.lon, angle });
 
-                const key = `${polygon.id}-${index}`;
+                const key = `${polygon.id}-${vertex.id || index}`;
                 const text = `${vertex.lat.toFixed(6)}, ${vertex.lon.toFixed(6)}`;
                 const labelWidth = this.estimateLabelWidth(text);
 
@@ -1428,7 +1449,8 @@ export class LabelManager {
         // Render all labels
         if (this.labels.length > 0) {
             this.renderLabels();
-            this.startSimulation(polygons);
+            if (!this.placementMode) this.startSimulation(polygons);
+            else this.renderPolygonNames(polygons);
         } else {
             // No vertex labels, but still render polygon names
             this.renderPolygonNames(polygons);

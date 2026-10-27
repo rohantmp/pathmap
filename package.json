@@ -9,9 +9,10 @@
     "build:dual": "bash scripts/build-dual.sh",
     "preview": "vite preview",
     "preview:dual": "node scripts/serve-static.js dist-dual 4173 127.0.0.1 /pathmap/",
-    "pretest": "vite build",
-    "test": "playwright test",
-    "test:v2": "PATHMAP_DIST=dist-dual PATHMAP_BASE=/pathmap/v2/ playwright test"
+    "test": "npm run test:unit && npm run build && playwright test",
+    "test:v2": "npm run test:unit && PATHMAP_DIST=dist-dual PATHMAP_BASE=/pathmap/v2/ playwright test",
+    "test:unit": "node tests/unit/geometry.test.js",
+    "review:editor": "node scripts/capture-editor-review.cjs"
   },
   "dependencies": {
     "dom-to-image-more": "^3.7.2",

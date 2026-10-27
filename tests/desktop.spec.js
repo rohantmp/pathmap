@@ -140,7 +140,7 @@ test.describe('Vertex editing (mouse)', () => {
     await page.mouse.up();
     await page.waitForTimeout(300);
     const after = (await storedSession(page)).polygons[0].hull.map((v) => `${v.lat},${v.lon}`).join('|');
-    expect(after).not.toBe(before);
+    expect(after).toBe(before); // Unapplied boundary changes stay out of committed storage.
     expect(await handles.count()).toBe(n0);
 
     // Right-click deletes exactly one vertex each time
@@ -156,8 +156,9 @@ test.describe('Vertex editing (mouse)', () => {
     expect(mid).not.toBeNull();
     await page.mouse.click(mid.x, mid.y);
     await expect(handles).toHaveCount(n0 - 1);
-    await page.click('#exit-edit-mode');
+    await page.click('#map-draft-apply');
     await expect(handles).toHaveCount(0);
+    expect((await storedSession(page)).polygons[0].hull.map(v=>`${v.lat},${v.lon}`).join('|')).not.toBe(before);
   });
 });
 
@@ -203,7 +204,8 @@ test.describe('Example session and storage', () => {
     expect(keys.v2).toContain('Changed in v2');
     // a v2 session is still a valid v1 session shape
     const v2 = JSON.parse(keys.v2);
-    expect(Object.keys(v2).sort()).toEqual(Object.keys(JSON.parse(v1Session)).sort());
+    expect(Object.keys(v2)).toEqual(expect.arrayContaining(Object.keys(JSON.parse(v1Session))));
+    expect(v2.schemaVersion).toBe(2);
   });
 
   test('back-to-v1 link only when served under /v2/', async ({ page }) => {

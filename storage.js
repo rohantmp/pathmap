@@ -12,8 +12,10 @@ export function saveToLocalStorage(state) {
     try {
         const serialized = JSON.stringify(state);
         localStorage.setItem(STORAGE_KEY, serialized);
+        return true;
     } catch (error) {
         console.error('Failed to save to localStorage:', error);
+        return false;
     }
 }
 
@@ -35,6 +37,7 @@ export function loadFromLocalStorage() {
         }
     } catch (error) {
         console.error('Failed to load from localStorage:', error);
+        throw error; // The caller pauses autosave rather than replacing unreadable stored data.
     }
     return null;
 }

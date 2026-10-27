@@ -306,7 +306,7 @@
                 </section>
 
                 <section class="modal-section" id="export-pdf-options">
-                    <h3>PDF page</h3>
+                    <h3>Page layout · PNG & PDF</h3>
                     <div class="field-row">
                         <label class="field">
                             <span>Size</span>
@@ -324,6 +324,12 @@
                             </select>
                         </label>
                     </div>
+                </section>
+                <section class="export-section">
+                    <label class="field"><span>Output appearance</span><select id="export-appearance"><option value="color">Color</option><option value="grayscale">Grayscale + distinct marks</option></select></label>
+                    <p class="export-hint">The complete page uses this appearance. Labels and map key keep their positions; color editing is preserved. Current viewport resolution is used.</p>
+                    <button type="button" id="export-preview-button" class="btn btn-secondary">Preview final page</button>
+                    <div id="export-preview-wrap" class="export-preview-wrap" hidden><img id="export-preview-image" alt="Final export page preview"></div>
                 </section>
             </form>
             <div class="modal-footer">
