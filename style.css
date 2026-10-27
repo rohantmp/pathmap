@@ -1725,3 +1725,141 @@ body {
         font-size: 16px;
     }
 }
+
+.custom-label-controls {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 18px;
+}
+.custom-label-controls h3 {
+    font-size: 14px;
+}
+.custom-label-controls input {
+    width: 100%;
+    padding: 9px;
+    border: 1px solid #ccd7df;
+    border-radius: 5px;
+    font-size: 14px;
+}
+.custom-label-row {
+    display: flex;
+    gap: 6px;
+    margin: 8px 0;
+}
+.custom-label-row input {
+    min-width: 0;
+}
+.custom-map-label {
+    width: max-content !important;
+    height: auto !important;
+    max-width: 260px;
+}
+.custom-label-content {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-width: 260px;
+    padding: 6px 9px;
+    border: 1px solid #667c8c;
+    border-radius: 4px;
+    background: #fffffff2;
+    color: #243b4c;
+    font: 600 13px/1.4 system-ui;
+    box-shadow: 0 2px 5px #0002;
+}
+.adding-custom-label #map {
+    cursor: crosshair;
+}
+.custom-map-label:focus {
+    outline: 3px solid #247fc0;
+}
+@media (max-width: 768px) {
+    .custom-label-controls input {
+        font-size: 16px;
+    }
+    .custom-label-controls .btn {
+        min-height: 44px;
+    }
+}
+
+.examples-menu-button {
+    width: 100%;
+    margin-bottom: 10px;
+}
+.examples-dialog {
+    max-width: 780px;
+}
+.example-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.example-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+    padding: 16px;
+    border: 1px solid #d0dce5;
+    border-radius: 8px;
+    background: #f7fafc;
+    color: #2c3e50;
+    cursor: pointer;
+}
+.example-card strong {
+    font-size: 14px;
+}
+.example-card span {
+    font-size: 12px;
+    line-height: 1.6;
+    color: #5f7382;
+}
+.example-card:hover,
+.example-card:focus-visible {
+    background: #eaf5ff;
+    border-color: #247fc0;
+}
+.example-card.is-loaded {
+    border-color: #247fc0;
+}
+.example-guide {
+    padding: 12px;
+    background: #eef6fc;
+    border: 1px solid #cbddec;
+    border-radius: 7px;
+    margin-bottom: 12px;
+}
+.example-guide[hidden] {
+    display: none;
+}
+.example-guide strong {
+    font-size: 13px;
+}
+.example-guide p {
+    font-size: 12px;
+    line-height: 1.6;
+    margin: 8px 0;
+}
+.examples-dialog .modal-body > p {
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 0;
+    color: #546d80;
+}
+@media (max-width: 600px) {
+    .example-cards {
+        grid-template-columns: 1fr;
+    }
+    .example-card {
+        min-height: 88px;
+    }
+    .examples-menu-button {
+        min-height: 44px;
+    }
+}
+
+/* A closing phone drawer must not swallow the tap that places a map label. */
+@media (max-width: 768px) {
+    .sidebar:not(.active) {
+        pointer-events: none;
+    }
+}

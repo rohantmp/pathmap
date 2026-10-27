@@ -444,3 +444,189 @@ test("a failed grayscale capture restores names, fills and controls without chan
     0,
   );
 });
+test("example menu loads every edge case with a guide and can cancel replacement", async ({
+  page,
+}) => {
+  const ids = [
+    "farm",
+    "winding",
+    "disconnected",
+    "invalid",
+    "shared",
+    "locked",
+    "collision",
+    "labels",
+    "grayscale",
+  ];
+  let accept = true,
+    confirmations = 0;
+  page.on("dialog", async (d) => {
+    if (d.type() === "confirm") {
+      confirmations++;
+      accept ? await d.accept() : await d.dismiss();
+    } else await d.accept();
+  });
+  await openApp(page);
+  await page.click("#open-examples");
+  await expect(page.locator(".example-card")).toHaveCount(9);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#examples-modal")).toBeHidden();
+  await expect(page.locator("#open-examples")).toBeFocused();
+  for (const id of ids) {
+    await page.click("#open-examples");
+    await page.click(`[data-example-id="${id}"]`);
+    await expect(page.locator("#examples-modal")).toBeHidden();
+    await expect(page.locator("#example-guide")).toBeVisible();
+    const s = await storedSession(page);
+    expect(s.exampleId).toBe(id);
+    if (["shared", "locked", "collision"].includes(id))
+      expect(s.noOverlap).toBe(true);
+    if (id === "locked") expect(s.polygons[1].locked).toBe(true);
+    if (id === "grayscale") expect(s.exportPrefs.appearance).toBe("grayscale");
+  }
+  expect(confirmations).toBe(8);
+  const before = (await storedSession(page)).polygons;
+  accept = false;
+  await page.click("#open-examples");
+  await page.click('[data-example-id="winding"]');
+  await expect(page.locator("#examples-modal")).toBeVisible();
+  expect((await storedSession(page)).exampleId).toBe("grayscale");
+  expect((await storedSession(page)).polygons).toEqual(before);
+  await page.click("#examples-close");
+});
+test("editing labels starts from the visible spread layout and keeps untouched labels still", async ({
+  page,
+}) => {
+  await openApp(page);
+  await page.locator(".empty-state button").click();
+  await page.waitForFunction(
+    () => {
+      const value = [...document.querySelectorAll(".vertex-label")]
+        .map((e) => e.style.transform)
+        .join("|");
+      if (window.labelPose === value)
+        window.labelStable = (window.labelStable || 0) + 1;
+      else {
+        window.labelPose = value;
+        window.labelStable = 0;
+      }
+      return window.labelStable >= 5;
+    },
+    null,
+    { polling: 100 },
+  );
+  const positions = () =>
+    page.locator("[data-placement-key]").evaluateAll((es) =>
+      es
+        .map((e) => {
+          const r = e.getBoundingClientRect();
+          return {
+            id: e.dataset.placementKind + "-" + e.dataset.placementKey,
+            x: r.x,
+            y: r.y,
+          };
+        })
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    );
+  const before = await positions();
+  expect(before.length).toBeGreaterThan(10);
+  await page
+    .getByRole("button", { name: "Edit labels and key", exact: true })
+    .click();
+  const after = await positions();
+  expect(after).toEqual(before);
+  await drag(page, ".vertex-label", 25, 15);
+  const changed = await positions();
+  const stationary = changed.filter(
+    (p, i) => p.x === after[i].x && p.y === after[i].y,
+  );
+  expect(stationary.length).toBeGreaterThan(before.length - 3);
+});
+test("custom text labels support placement, safe text, rename, move, undo, save/load and deletion", async ({
+  page,
+}, info) => {
+  page.on("dialog", (d) => d.accept());
+  await openApp(page);
+  await uploadGpx(page, ["winding.gpx"]);
+  await page.click("#new-label-tool");
+  await page.fill("#new-label-text", "Gate <b>A</b>");
+  await page.click("#add-custom-label");
+  const map = await page.locator("#map").boundingBox();
+  await page.mouse.click(map.x + 110, map.y + map.height - 130);
+  await expect(page.locator(".custom-map-label")).toHaveCount(1);
+  expect(await page.locator(".custom-map-label b").count()).toBe(0);
+  const initial = (await storedSession(page)).annotations.custom[0];
+  expect(initial.text).toBe("Gate <b>A</b>");
+  await drag(page, ".custom-map-label", 40, -30);
+  const moved = (await storedSession(page)).annotations.custom[0];
+  expect(moved.lat).not.toBe(initial.lat);
+  await page.locator("#custom-label-list input").fill("Main gate");
+  await page.locator("#custom-label-list input").press("Tab");
+  await expect(page.locator(".custom-label-content")).toHaveText("Main gate");
+  await page.click("#reset-placement");
+  expect((await storedSession(page)).annotations.custom).toHaveLength(1);
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.click("#download-session"),
+  ]);
+  const file = await saveDownload(download, info.outputPath("custom-session"));
+  expect(
+    JSON.parse(file.bytes.toString()).data.annotations.custom[0].text,
+  ).toBe("Main gate");
+  await page.reload();
+  await expect(page.locator(".custom-label-content")).toHaveText("Main gate");
+  expect((await storedSession(page)).annotations.custom[0].lat).toBe(moved.lat);
+  await page.click("#place-labels");
+  await openSettingsTab(page, "labels");
+  await page.locator("[data-delete-label]").click();
+  await expect(page.locator(".custom-map-label")).toHaveCount(0);
+  await page.click("#editor-undo");
+  await expect(page.locator(".custom-label-content")).toHaveText("Main gate");
+  await page.setInputFiles("#session-file-input", file.file);
+  await expect(page.locator(".custom-label-content")).toHaveText("Main gate");
+});
+test("new-label placement can be cancelled without creating an annotation", async ({
+  page,
+}) => {
+  await openApp(page);
+  await page.click("#new-label-tool");
+  await page.fill("#new-label-text", "Cancelled note");
+  await page.click("#add-custom-label");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".map-container")).not.toHaveClass(
+    /adding-custom-label/,
+  );
+  await expect(page.locator(".custom-map-label")).toHaveCount(0);
+});
+test("notes without polygons are protected by example replacement confirmation and Clear All supports undo", async ({
+  page,
+}) => {
+  let accept = false,
+    asked = 0;
+  page.on("dialog", async (d) => {
+    asked++;
+    accept ? await d.accept() : await d.dismiss();
+  });
+  await openApp(page);
+  await page.click("#new-label-tool");
+  await page.fill("#new-label-text", "Unattached note");
+  await page.click("#add-custom-label");
+  const r = await page.locator("#map").boundingBox();
+  await page.mouse.click(r.x + 150, r.y + 350);
+  await page.click("#open-examples");
+  await page.click('[data-example-id="farm"]');
+  expect(asked).toBe(1);
+  expect((await storedSession(page)).polygons).toHaveLength(0);
+  await expect(page.locator(".custom-label-content")).toHaveText(
+    "Unattached note",
+  );
+  await page.click("#examples-close");
+  accept = true;
+  await page.click("#clear-all");
+  await expect(page.locator(".custom-map-label")).toHaveCount(0);
+  expect((await storedSession(page)).annotations.custom).toHaveLength(0);
+  await page.click("#editor-undo");
+  await expect(page.locator(".custom-label-content")).toHaveText(
+    "Unattached note",
+  );
+});

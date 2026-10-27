@@ -324,3 +324,50 @@ test("moving a GPX track never implicitly shares topology with a preserved manua
   );
   assert.ok(moved.polygons[1].hull.every((v) => v.sourceId));
 });
+import { EXAMPLE_CATALOG, createExample } from "../../example-sessions.js";
+import { mergeConvexHulls } from "../../convex-hull.js";
+test("every menu example starts with valid committed geometry and isolated fixture data", () => {
+  assert.equal(new Set(EXAMPLE_CATALOG.map((e) => e.id)).size, 9);
+  for (const entry of EXAMPLE_CATALOG) {
+    const { state } = createExample(entry.id);
+    state.polygons.forEach((p) => {
+      p.hull ||= mergeConvexHulls(p.tracks.map((t) => t.points));
+    });
+    const migrated = migrateSession(state);
+    migrated.polygons.forEach((p) => validateRing(p.hull));
+    if (migrated.noOverlap) validateCoverage(migrated.polygons);
+    assert.equal(migrated.exampleId, entry.id);
+    assert.ok(entry.hint.length > 30);
+  }
+  const a = createExample("winding");
+  a.state.polygons[0].tracks[0].points[0].lat = 50;
+  assert.notEqual(
+    createExample("winding").state.polygons[0].tracks[0].points[0].lat,
+    50,
+  );
+  assert.throws(() => createExample("unknown"));
+});
+test("custom labels migrate, validate and survive annotation cleanup without any polygon", () => {
+  const custom = [
+    { id: "note", text: "Gate <b>A</b>", lat: 12.79, lng: 79.67 },
+  ];
+  const s = migrateSession({ polygons: [], annotations: { custom } });
+  cleanAnnotations(s);
+  assert.deepEqual(s.annotations.custom, custom);
+  assert.deepEqual(
+    migrateSession(JSON.parse(JSON.stringify(s))).annotations.custom,
+    custom,
+  );
+  assert.throws(() =>
+    migrateSession({
+      polygons: [],
+      annotations: { custom: [{ ...custom[0], text: "" }] },
+    }),
+  );
+  assert.throws(() =>
+    migrateSession({
+      polygons: [],
+      annotations: { custom: [{ ...custom[0], lat: 100 }] },
+    }),
+  );
+});

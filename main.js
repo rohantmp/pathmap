@@ -8,7 +8,7 @@ import { mergeConvexHulls } from './convex-hull.js';
 import { saveToLocalStorage, loadFromLocalStorage, downloadSession, uploadSession } from './storage.js';
 import { renderComposite, exportComposite, exportKML, exportGeoJSON, exportTracksGeoJSON } from './export.js';
 import { transliterateSimplified } from './transliteration.js';
-import { EXAMPLE_SESSION, EXAMPLE_EXPORT_PREFS } from './example-session.js';
+import { EXAMPLE_CATALOG, createExample } from './example-sessions.js';
 
 // Application state
 let state = {
@@ -100,7 +100,8 @@ function init() {
         document.getElementById('session-file-input').click();
     });
     document.getElementById('session-file-input').addEventListener('change', handleUploadSession);
-    document.getElementById('load-example-session').addEventListener('click', loadExampleSession);
+    document.getElementById('load-example-session').addEventListener('click', () => loadExampleSession());
+    setupExampleMenu();
     // Editor installs the polygon selection and draft controls.
 
     // Collapsible upload section
@@ -763,11 +764,11 @@ function handleToggleArea(event) {
 }
 
 function handleClearAll() {
-    if (state.polygons.length === 0 && state.groups.length === 0) {
+    if (state.polygons.length === 0 && state.groups.length === 0 && !state.annotations.custom.length && !storageRecovery) {
         return;
     }
 
-    if (!confirm('Are you sure you want to clear all polygons and groups?')) {
+    if (!confirm('Are you sure you want to clear all polygons, groups and custom labels?')) {
         return;
     }
 
@@ -778,12 +779,16 @@ function handleClearAll() {
     storageRecovery=false;
     state.polygons = [];
     state.groups = [];
+    state.annotations = {names:{},coordinates:{},custom:[]};
+    state.noOverlap = false;
+    delete state.exampleId;
     state.focusedPolygonId = null;
     state.focusedGroupId = null;
     colorIndex = 0;
 
     renderPolygonList();
     saveState();
+    editor?.setLabelEditing(false);
 }
 
 function handleAreaUnitChange(event) {
@@ -794,6 +799,7 @@ function handleAreaUnitChange(event) {
 }
 
 function renderPolygonList() {
+    renderExampleGuide();
     const container = document.getElementById('polygons-list');
 
     if (state.polygons.length === 0 && state.groups.length === 0) {
@@ -1226,43 +1232,95 @@ function handleDrop(event, targetType, targetId) {
 // Bundled example session
 // ---------------------------------------------------------------------------
 
-function loadExampleSession() {
-    if (state.polygons.length > 0 || state.groups.length > 0) {
+function loadExampleSession(id = 'farm') {
+    const prepared = createExample(id);
+    if (state.polygons.length > 0 || state.groups.length > 0 || state.annotations.custom.length || editor?.draft || storageRecovery) {
         if (!confirm('Loading the example replaces your current session (save it first if you want to keep it). Continue?')) {
             return;
         }
     }
 
     // Deep copy so the bundled data is never mutated
-    const example = JSON.parse(JSON.stringify(EXAMPLE_SESSION));
-    example.polygons.forEach(polygon => updatePolygonHull(polygon));
+    const example = prepared.state;
+    example.polygons.forEach(polygon => { if (!polygon.hull) updatePolygonHull(polygon); });
 
     exitEditMode();
     mapManager.clear();
     state = migrateSession(example);
+    storageRecovery = false;
     colorIndex = state.polygons.length;
     exportRenames = {};
 
     // Turn on the display options the example is meant to show off
     // Coordinate labels crowd a phone screen, so only switch them on for larger layouts
-    setCheckbox('toggle-labels', !isMobileLayout(), (checked) => mapManager.setShowLabels(checked));
+    setCheckbox('toggle-labels', !!prepared.definition.coordinates && !isMobileLayout(), (checked) => mapManager.setShowLabels(checked));
     setCheckbox('toggle-area', true, (checked) => mapManager.setShowAreaOnMap(checked));
-    setCheckbox('toggle-group-bounds', true, (checked) => mapManager.setShowGroupBounds(checked));
+    setCheckbox('toggle-group-bounds', !!prepared.definition.groups, (checked) => mapManager.setShowGroupBounds(checked));
 
     restoreState();
     saveState();
 
     editor?.reset();
+    closeExampleMenu();
+    renderExampleGuide();
 
     // Pre-fill the export dialog with front matter that suits the example
-    applyExportPrefs(EXAMPLE_EXPORT_PREFS);
+    applyExportPrefs(prepared.prefs);
     try {
-        localStorage.setItem(EXPORT_PREFS_KEY, JSON.stringify(EXAMPLE_EXPORT_PREFS));
+        localStorage.setItem(EXPORT_PREFS_KEY, JSON.stringify(prepared.prefs));
     } catch (error) {
         console.warn('Could not save export preferences:', error);
     }
 
     closeSidebarOnMobile();
+}
+
+let exampleMenuReturnFocus;
+function openExampleMenu() {
+    exampleMenuReturnFocus = document.activeElement;
+    document.getElementById('examples-modal').hidden = false;
+    document.getElementById('example-cards').innerHTML = EXAMPLE_CATALOG.map(example => `
+        <button type="button" class="example-card ${state.exampleId === example.id ? 'is-loaded' : ''}" data-example-id="${example.id}">
+            <strong>${escapeHtml(example.title)}${state.exampleId === example.id ? ' · loaded' : ''}</strong>
+            <span>${escapeHtml(example.description)}</span>
+        </button>`).join('');
+    document.getElementById('examples-close').focus();
+}
+function closeExampleMenu() {
+    const modal=document.getElementById('examples-modal');
+    if(modal.hidden)return;
+    modal.hidden=true;
+    exampleMenuReturnFocus?.focus({preventScroll:true});
+}
+function setupExampleMenu() {
+    document.getElementById('open-examples').onclick=openExampleMenu;
+    document.getElementById('browse-examples').onclick=openExampleMenu;
+    document.getElementById('examples-close').onclick=closeExampleMenu;
+    document.getElementById('examples-modal').onclick=e=>{if(e.target===e.currentTarget)closeExampleMenu();};
+    document.getElementById('example-cards').onclick=e=>{const button=e.target.closest('[data-example-id]');if(button)loadExampleSession(button.dataset.exampleId);};
+    document.getElementById('example-try').onclick=()=>{
+        const example=EXAMPLE_CATALOG.find(e=>e.id===state.exampleId);if(!example)return;
+        if(example.action==='export'){if(editor.leaveDraft())openExportDialog('png');}
+        else if(example.action==='labels'){if(editor.leaveDraft()){editor.setLabelEditing(true);editor.openLabels();}}
+        else {editor.select(example.target);if(example.vertex!==undefined){mapManager.onVertexSelect?.(example.vertex);mapManager.vertexMarkers[example.vertex]?.getElement()?.focus({preventScroll:true});}}
+    };
+    document.addEventListener('keydown',e=>{
+        const modal=document.getElementById('examples-modal');if(modal.hidden)return;
+        if(e.key==='Escape'){e.preventDefault();closeExampleMenu();}
+        else if(e.key==='Tab'){
+            const buttons=[...modal.querySelectorAll('button')],first=buttons[0],last=buttons.at(-1);
+            if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+            else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+        }
+    });
+}
+function renderExampleGuide() {
+    const guide=document.getElementById('example-guide');
+    const example=EXAMPLE_CATALOG.find(e=>e.id===state.exampleId);
+    guide.hidden=!example;if(!example)return;
+    document.getElementById('example-guide-title').textContent=example.title;
+    document.getElementById('example-guide-hint').textContent=example.hint;
+    document.getElementById('example-try').textContent=example.action==='export'?'Open grayscale export':example.action==='labels'?'Edit labels and key':'Try boundary editing';
 }
 
 function setCheckbox(id, checked, apply) {

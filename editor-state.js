@@ -10,6 +10,26 @@ export function migrateSession(input) {
   state.annotations ||= { names: {}, coordinates: {} };
   state.annotations.names ||= {};
   state.annotations.coordinates ||= {};
+  state.annotations.custom ||= [];
+  if (!Array.isArray(state.annotations.custom))
+    throw Error("Custom labels must be an array.");
+  const customIds = new Set();
+  for (const label of state.annotations.custom) {
+    if (
+      typeof label.id !== "string" ||
+      !label.id ||
+      customIds.has(label.id) ||
+      typeof label.text !== "string" ||
+      !label.text.trim() ||
+      label.text.length > 200 ||
+      !Number.isFinite(label.lat) ||
+      !Number.isFinite(label.lng) ||
+      Math.abs(label.lat) > 90 ||
+      Math.abs(label.lng) > 180
+    )
+      throw Error("Invalid custom label.");
+    customIds.add(label.id);
+  }
   state.layout ||= { legend: { onMap: false, x: 0.95, y: 0.95 } };
   state.layout.legend ||= { onMap: false, x: 0.95, y: 0.95 };
   state.noOverlap ||= false;

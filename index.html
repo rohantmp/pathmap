@@ -94,6 +94,10 @@
             </div>
 
             <div class="controls">
+                <button type="button" id="open-examples" class="btn btn-secondary examples-menu-button">Example sessions</button>
+                <section id="example-guide" class="example-guide" hidden aria-label="Example walkthrough">
+                    <strong id="example-guide-title"></strong><p id="example-guide-hint"></p><button type="button" id="example-try" class="btn btn-secondary btn-small">Try boundary editing</button>
+                </section>
                 <!-- Settings row with Clear All -->
                 <div class="settings-row">
                     <button id="toggle-settings-panel" class="settings-header">
@@ -242,7 +246,8 @@
                         <!-- Session Tab -->
                         <div class="tab-content" id="session-tab" style="display: none;">
                             <p class="export-hint" style="margin: 0 0 0.75rem;">Sessions auto-save in this browser. Use <strong>Save</strong> / <strong>Load</strong> at the top to move a session between devices as a <code>.pathmap</code> file.</p>
-                            <button id="load-example-session" class="btn btn-secondary" style="width: 100%;">Load example session</button>
+                            <button id="load-example-session" class="btn btn-secondary" style="width: 100%;">Load farm example</button>
+                            <button type="button" id="browse-examples" class="btn btn-secondary" style="width:100%;margin-top:8px">Browse all example sessions</button>
                             <p class="export-hint">Six farm plots near Kanchipuram: several GPX tracks per polygon, two groups, Tamil and transliterated names, labels, areas and ready-made export text. Replaces the current session after confirmation.</p>
                         </div>
                     </div>
@@ -264,6 +269,13 @@
             </button>
             <div id="map"></div>
         </main>
+    </div>
+
+    <div class="modal-backdrop" id="examples-modal" hidden>
+        <div class="modal examples-dialog" role="dialog" aria-modal="true" aria-labelledby="examples-title" aria-describedby="examples-description">
+            <div class="modal-header"><h2 id="examples-title">Example sessions</h2><button type="button" id="examples-close" class="btn-icon modal-close" aria-label="Close examples">&times;</button></div>
+            <div class="modal-body"><p id="examples-description">Try the editor’s edge cases with synthetic survey data on the Kanchipuram map. Loading an example replaces the current session after confirmation. Save your work first.</p><div id="example-cards" class="example-cards"></div></div>
+        </div>
     </div>
 
     <!-- Export dialog (PNG / PDF with front matter and export-only renames) -->

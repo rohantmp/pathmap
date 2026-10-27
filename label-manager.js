@@ -53,6 +53,32 @@ export class LabelManager {
         };
     }
 
+    setPlacementMode(enabled) {
+        // Freeze the exact on-screen layout. Do not rebuild from pre-simulation offsets.
+        if (enabled) {
+            const pending=this.pendingNamePolygons;
+            if (this.simulationFrame !== null) cancelAnimationFrame(this.simulationFrame);
+            this.simulationFrame = null;
+            this.isSimulating = false;
+            this.pendingNamePolygons = null;
+            this.editingPositions = {names:{},coordinates:{}};
+            for (const [id,marker] of this.polygonNameMarkers) {
+                const p=marker.getLatLng();this.editingPositions.names[id]={lat:p.lat,lng:p.lng};
+            }
+            for (const [key,marker] of this.labelMarkers) {
+                const p=marker.getLatLng();this.editingPositions.coordinates[key]={lat:p.lat,lng:p.lng};
+            }
+            this.placementMode=true;
+            // Early entry may precede the first name render; add missing names without moving existing ones.
+            if(pending?.some(p=>!this.polygonNameMarkers.has(p.id)))this.renderPolygonNames(pending);
+        }
+        this.placementMode = enabled;
+        for (const marker of [...this.polygonNameMarkers.values(),...this.labelMarkers.values()]) {
+            if(enabled)marker.dragging?.enable();else marker.dragging?.disable();
+            if(marker.getElement())marker.getElement().tabIndex=enabled?0:-1;
+        }
+    }
+
     bindPlacementKeys(marker, kind, key) {
         const element=marker.getElement();
         if(!element)return;
@@ -288,6 +314,9 @@ export class LabelManager {
      * Clear all labels
      */
     clear() {
+        this.pendingNamePolygons = null;
+        this.editingPositions = null;
+        this.placementMode = false;
         this.labels = [];
         this.labelMarkers.forEach((marker, key) => {
             this.removeLabelMarker(key);
@@ -1048,7 +1077,7 @@ export class LabelManager {
                 return; // Skip this polygon if it's not visible
             }
 
-            const savedName = this.placements.names[polygon.id];
+            const savedName = this.placements.names[polygon.id] || (this.placementMode && this.editingPositions?.names[polygon.id]);
             const position = savedName ? {lat:savedName.lat,lon:savedName.lng} : this.findPolygonNamePosition(polygon, this.labels.filter(l => l.polygonId === polygon.id));
 
             if (position && polygon.name) {
@@ -1302,7 +1331,7 @@ export class LabelManager {
      */
     updateAllLabels(polygons) {
         this.stopSimulation();
-        const savedPositions = new Map(Object.entries(this.placements.coordinates));
+        const savedPositions = new Map(Object.entries({...(this.placementMode ? this.editingPositions?.coordinates : {}),...this.placements.coordinates}));
         this.manuallyPositioned = new Set(savedPositions.keys());
 
         // Clear all existing labels

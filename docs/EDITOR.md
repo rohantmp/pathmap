@@ -57,9 +57,9 @@ in a local metre projection; editing within 5° of a pole is rejected. The
 geometry-only 10,000-point regression includes validation and simplification;
 it does not promise a fixed rendering latency for thousands of map handles.
 
-## Place labels and the map key
+## Edit labels and the map key
 
-Use **Place labels & key** to drag polygon names/areas and coordinate labels;
+Use **Edit labels and key** to drag polygon names/areas and coordinate labels;
 arrow keys also nudge focused labels. Coordinate labels are enabled under Display.
 Their values still describe the associated boundary vertex. Stable vertex IDs
 keep labels attached through insertions/deletions; deleted vertices lose their
@@ -70,6 +70,41 @@ on-map key drags/nudges in placement mode and remains inside the map frame. Name
 and coordinate labels have geographic anchors; the key has normalized frame
 coordinates, so pan/zoom does not move it geographically. Reset pinned labels &
 key returns to automatic placement. All placements travel in session files.
+
+### Custom text labels
+
+Use **Add label** in the map toolbar, type the note in the Labels panel, then
+choose **Place on map** and click/tap its location. Escape or Cancel placement
+stops the action without adding anything. While **Edit labels and key** is active,
+custom notes support drag, arrow-key nudging and Delete. The Labels panel also
+renames and deletes them. Undo/Redo and session Save/Load include the notes, even
+when no polygon exists. They appear in PNG/PDF and use light text backplates;
+grayscale applies to them with the rest of the page. Reset pinned labels/key
+preserves custom notes.
+
+Entering label editing freezes the exact currently visible spread layout. It
+neither reinitializes label positions nor saves unmoved automatic labels as pins.
+Dragging one label leaves the others at their existing positions.
+
+## Example sessions menu
+
+**Example sessions** above Settings opens a menu with nine synthetic scenarios.
+Each loaded example includes a short guide and a **Try** action that opens the
+relevant editing controls. Loading an example asks before replacing an active
+survey; cancelling leaves the survey and any draft intact. The original farm
+example remains a quick action on the empty screen and under Session.
+
+| Example | What to try |
+|---|---|
+| Farm survey overview | Groups, Tamil/Latin labels, visibility and export |
+| A path that meanders | Enable Follow actual path; compare broad outline and detail |
+| Disconnected GPX segments | Review gap markers or exclude an unrelated segment |
+| A crossing boundary walk | An invalid followed outline is rejected |
+| Push a shared edge | Drag the existing internal shared handle; both owners move |
+| A locked neighbor | The same push is blocked until the neighbor is unlocked |
+| No overlap without a shared edge | Collision blocks a move without joining plots |
+| Crowded labels and custom notes | Enter editing without a layout jump; add and place a note |
+| Similar tones in grayscale | Preview matching numbers/patterns over imagery |
 
 ## Export preview and grayscale
 
@@ -125,7 +160,8 @@ and Save can download the in-memory committed survey.
 - `geometry.js`: metre projection, ring/coverage validation, ordered simplification,
   source assembly and atomic shared-node edits.
 - `editor-state.js`: migration/validation, history and annotation cleanup.
-- `editor.js`: drafts, mode controls, source inspection, placement and key.
+- `editor.js`: drafts, mode controls, source inspection, custom text labels, placement and key.
+- `example-sessions.js`: isolated synthetic fixtures and guided edge-case metadata.
 - `map-manager.js` / `label-manager.js`: Leaflet handles and stable anchored labels.
 - `export.js`: shared page renderer, monochrome marks and downloads.
 

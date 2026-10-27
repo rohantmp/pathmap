@@ -27,13 +27,14 @@ No merge, push or deployment was performed. No new dependencies or lockfile chan
 
 ## Validation
 
-- `PATHMAP_CHROMIUM=/usr/bin/chromium-browser npm test`: **12 unit tests and 25
-  desktop/mobile browser tests passed**, including a production build.
-- `V1_REF=865f292 npm run build:dual`: passed. Local checkout lacks the `v1` tag;
-  this is the release commit documented by the existing `DEPLOY.md`.
-- Full v2 browser suite: **25 passed**, plus unit tests. After the final live-drag
-  and numbered-handle adjustments, the affected v2 shared-edge/local-path tests,
-  grayscale PDF and back-to-v1 link were rechecked and passed.
+- `npm run test:unit`: **14 geometry/state/example unit tests passed**.
+- `npm run build`: production build passed.
+- `V1_REF=865f292 npm run build:dual`: passed for the initial implementation;
+  local checkout lacks the `v1` tag, so its documented release commit was used.
+- Final rebuilt v2: **31 desktop/mobile browser tests passed**, including the
+  example menu, exact label-position preservation and custom-label lifecycle.
+- Existing root-route suite and focused follow-up checks also passed after the
+  phone drawer placement fix.
 - `git diff --check`: clean.
 - Real browser review screenshots and a grayscale PDF are generated with
   `npm run review:editor`; see ignored `review-artifacts/index.html`. They use
@@ -61,3 +62,11 @@ There is no outstanding implementation or automated-test failure for this scope.
 
 The main checkout and its unrelated files remain untouched. Merge is the
 operator's next action after reviewing this branch; nothing has been published.
+
+## Operator feedback follow-up
+
+The branch also includes the nine-case Example sessions menu, preserves the
+currently spread label layout on entering **Edit labels and key**, and supports
+arbitrary text notes with placement, rename/delete, undo and saved sessions.
+See the editor guide for walkthroughs. The local preview runs as a detached
+loopback process, so it is independent of an interactive tool session.

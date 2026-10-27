@@ -106,3 +106,28 @@ test('touch vertex editing: drag, long-press delete, midpoint tap', async ({ pag
   await page.tap('#map-draft-apply');
   expect(await hull()).not.toBe(before);
 });
+
+test("phone example menu and custom label placement close the drawer to reveal the map", async ({
+  page,
+}) => {
+  page.on("dialog", (d) => d.accept());
+  await openApp(page);
+  await openDrawer(page);
+  await page.tap("#open-examples");
+  await expect(page.locator(".example-card")).toHaveCount(9);
+  await page.tap('[data-example-id="winding"]');
+  await expect(page.locator("#sidebar")).not.toHaveClass(/active/);
+  await page.tap("#new-label-tool");
+  await expect(page.locator("#sidebar")).toHaveClass(/active/);
+  await page.fill("#new-label-text", "Gate · phone");
+  await page.tap("#add-custom-label");
+  await expect(page.locator("#sidebar")).not.toHaveClass(/active/);
+  await page.touchscreen.tap(100, 650);
+  await expect(page.locator(".custom-label-content")).toHaveText(
+    "Gate · phone",
+  );
+  await page.reload();
+  await expect(page.locator(".custom-label-content")).toHaveText(
+    "Gate · phone",
+  );
+});

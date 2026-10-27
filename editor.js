@@ -41,12 +41,76 @@ export class Editor {
         <details><summary>Shared boundaries · no overlap</summary><label class="toggle-control"><input id="no-overlap" type="checkbox">Prevent polygon overlap</label><p class="export-hint">Shared handles reshape both owners. Unjoined polygons stop at contact. Hidden polygons also constrain edits.</p><select id="join-neighbor" aria-label="Neighbor polygon"></select><button id="join-edge" class="btn btn-secondary">Join matching edges (within 1 m)</button><p class="export-hint">Align edge endpoints first. Joining previews all affected polygons; no automatic cascading pushes.</p><label class="toggle-control"><input id="polygon-locked" type="checkbox">Lock selected polygon after Apply</label></details></div>`;
     const bar = document.createElement("div");
     bar.id = "editor-toolbar";
-    bar.innerHTML = `<button id="editor-undo" class="btn btn-secondary" title="Undo (Ctrl+Z)">↶ Undo</button><button id="editor-redo" class="btn btn-secondary" title="Redo (Ctrl+Shift+Z)">↷ Redo</button><button id="editor-edit" class="btn btn-secondary">Edit boundary</button><button id="place-labels" class="btn btn-secondary" aria-pressed="false">Place labels & key</button><button id="editor-export" class="btn btn-secondary">Export preview</button><span id="editor-status" role="status" aria-live="polite">Select a polygon to edit</span><div id="draft-map-actions" hidden><button id="map-draft-apply" class="btn btn-primary">Apply</button><button id="map-draft-cancel" class="btn btn-secondary">Cancel</button></div>`;
+    bar.innerHTML = `<button id="editor-undo" class="btn btn-secondary" title="Undo (Ctrl+Z)">↶ Undo</button><button id="editor-redo" class="btn btn-secondary" title="Redo (Ctrl+Shift+Z)">↷ Redo</button><button id="editor-edit" class="btn btn-secondary">Edit boundary</button><button id="place-labels" class="btn btn-secondary" aria-pressed="false">Edit labels and key</button><button id="new-label-tool" class="btn btn-secondary">Add label</button><button id="editor-export" class="btn btn-secondary">Export preview</button><span id="editor-status" role="status" aria-live="polite">Select a polygon to edit</span><div id="draft-map-actions" hidden><button id="map-draft-apply" class="btn btn-primary">Apply</button><button id="map-draft-cancel" class="btn btn-secondary">Cancel</button></div>`;
     document.querySelector(".map-container").append(bar);
     const settings = document.createElement("div");
     settings.className = "editor-label-options";
     settings.innerHTML = `<label for="legend-placement">Map key</label><select id="legend-placement"><option value="below">Below map in exports</option><option value="map">On map · drag to place</option></select><button id="reset-placement" class="btn btn-secondary">Reset pinned labels & key</button>`;
     el("labels-tab").prepend(settings);
+    const custom = document.createElement("section");
+    custom.className = "custom-label-controls";
+    custom.innerHTML =
+      '<h3>Custom labels</h3><label for="new-label-text">New label text</label><input id="new-label-text" type="text" maxlength="200" placeholder="Gate, access road, survey note…"><button id="add-custom-label" class="btn btn-secondary">Place on map</button><p class="export-hint">Type a label, then click or tap its position on the map. Edit labels mode lets you drag or nudge it. Escape cancels placement.</p><div id="custom-label-list"></div>';
+    settings.after(custom);
+    this.customMarkers = new Map();
+    el("new-label-tool").onclick = () => {
+      if (!this.leaveDraft()) return;
+      this.setLabelEditing(true);
+      this.openLabels();
+      el("new-label-text").focus();
+    };
+    el("add-custom-label").onclick = () => this.armCustomLabel();
+    el("new-label-text").onkeydown = (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.armCustomLabel();
+      }
+    };
+    el("custom-label-list").onchange = (e) => {
+      const id = e.target.dataset.customId;
+      if (!id) return;
+      const text = e.target.value.trim();
+      if (!text) {
+        e.target.value =
+          this.getState().annotations.custom.find((l) => l.id === id)?.text ||
+          "";
+        this.status("Label text cannot be empty. Use Delete to remove it.");
+        return;
+      }
+      this.change((s) => {
+        const label = s.annotations.custom.find((l) => l.id === id);
+        if (label) label.text = text;
+      });
+    };
+    el("custom-label-list").onclick = (e) => {
+      const button = e.target.closest("[data-delete-label]");
+      if (button) this.deleteCustomLabel(button.dataset.deleteLabel);
+    };
+    this.map.map.on("click", (e) => {
+      if (!this.pendingCustomText) return;
+      const text = this.pendingCustomText;
+      this.pendingCustomText = null;
+      this.change((s) =>
+        s.annotations.custom.push({
+          id: uid(),
+          text,
+          lat: e.latlng.lat,
+          lng: e.latlng.lng,
+        }),
+      );
+      el("new-label-text").value = "";
+      this.status(
+        "Custom label added. Drag to adjust; use Labels to rename or delete.",
+      );
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && this.pendingCustomText) {
+        e.preventDefault();
+        this.pendingCustomText = null;
+        this.update();
+        this.status("Label placement cancelled.");
+      }
+    });
     this.legend = document.createElement("div");
     this.legend.id = "map-key";
     this.legend.className = "map-key";
@@ -77,10 +141,7 @@ export class Editor {
     };
     el("place-labels").onclick = () => {
       if (!this.leaveDraft()) return;
-      this.placing = !this.placing;
-      this.map.labelManager.placementMode = this.placing;
-      this.map.refreshAllLabels();
-      this.update();
+      this.setLabelEditing(!this.placing);
     };
     el("vertex-delete").onclick = () => {
       if (this.vertexIndex != null) this.map.deleteVertex(this.vertexIndex);
@@ -128,11 +189,14 @@ export class Editor {
       this.change((s) => {
         s.layout.legend.onMap = e.target.value === "map";
       });
-    el("reset-placement").onclick = () =>
+    el("reset-placement").onclick = () => {
+      this.setLabelEditing(false);
+      this.map.labelManager.editingPositions = null;
       this.change((s) => {
-        s.annotations = { names: {}, coordinates: {} };
+        s.annotations = { ...s.annotations, names: {}, coordinates: {} };
         s.layout.legend = { ...s.layout.legend, x: 0.95, y: 0.95 };
       });
+    };
     el("source-sections").onchange = (e) => {
       if (e.target.tagName === "SELECT") this.sourceFields();
     };
@@ -179,7 +243,9 @@ export class Editor {
         this.renderSources(i);
       }
     };
-    this.map.onSelect = (id) => this.select(id);
+    this.map.onSelect = (id) => {
+      if (!this.placing) this.select(id);
+    };
     this.map.onVertexPreview = (ring) => this.previewRing(ring);
     this.map.onVertexCancel = () => this.showDraft();
     this.map.onVertexSelect = (index) => {
@@ -268,7 +334,8 @@ export class Editor {
     this.selected = id;
     this.vertexIndex = null;
     this.placing = false;
-    this.map.labelManager.placementMode = false;
+    this.pendingCustomText = null;
+    this.map.labelManager.setPlacementMode(false);
     this.draft = clone(this.getState());
     this.draftHistory = new History(this.draft);
     this.openEdit();
@@ -637,6 +704,9 @@ export class Editor {
     this.update();
   }
   reset() {
+    this.placing = false;
+    this.pendingCustomText = null;
+    this.map.labelManager.setPlacementMode(false);
     this.beforeLayer?.remove();
     this.beforeLayer = null;
     this.draft = null;
@@ -770,6 +840,130 @@ export class Editor {
       : "below";
     this.map.labelManager.placements = this.getState().annotations;
     this.renderLegend();
+    this.renderCustomLabels();
+    el("add-custom-label").textContent = this.pendingCustomText
+      ? "Cancel placement"
+      : "Place on map";
+    document
+      .querySelector(".map-container")
+      .classList.toggle("adding-custom-label", !!this.pendingCustomText);
+  }
+  setLabelEditing(enabled) {
+    this.placing = enabled;
+    this.map.labelManager.setPlacementMode(enabled);
+    if (!enabled) this.pendingCustomText = null;
+    this.update();
+  }
+  openLabels() {
+    el("settings-container").style.display = "block";
+    document.querySelector('[data-tab="labels"]').click();
+    if (
+      window.matchMedia("(max-width:768px)").matches &&
+      !el("sidebar").classList.contains("active")
+    )
+      el("mobile-menu-toggle").click();
+  }
+  armCustomLabel() {
+    if (this.pendingCustomText) {
+      this.pendingCustomText = null;
+      this.update();
+      this.status("Label placement cancelled.");
+      return;
+    }
+    if (!this.leaveDraft()) return;
+    const text = el("new-label-text").value.trim();
+    if (!text) {
+      this.status("Type the new label text first.");
+      el("new-label-text").focus();
+      return;
+    }
+    this.setLabelEditing(true);
+    this.pendingCustomText = text;
+    this.update();
+    this.status("Click or tap the map to place the new label. Escape cancels.");
+    window.pathmapCloseSidebar?.();
+  }
+  deleteCustomLabel(id) {
+    this.change((s) => {
+      s.annotations.custom = s.annotations.custom.filter((l) => l.id !== id);
+    });
+  }
+  renderCustomLabels() {
+    const labels = this.getState().annotations.custom || [],
+      ids = new Set(labels.map((l) => l.id));
+    for (const [id, marker] of this.customMarkers)
+      if (!ids.has(id)) {
+        marker.remove();
+        this.customMarkers.delete(id);
+      }
+    for (const label of labels) {
+      let marker = this.customMarkers.get(label.id);
+      if (!marker) {
+        marker = L.marker([label.lat, label.lng], {
+          icon: L.divIcon({
+            className: "custom-map-label",
+            html: "",
+            iconSize: null,
+            iconAnchor: [0, 0],
+          }),
+          draggable: this.placing,
+        }).addTo(this.map.map);
+        marker.on("dragend", () => {
+          const p = marker.getLatLng();
+          this.change((s) => {
+            const l = s.annotations.custom.find((l) => l.id === label.id);
+            if (l) {
+              l.lat = p.lat;
+              l.lng = p.lng;
+            }
+          });
+        });
+        marker.getElement().onkeydown = (e) => {
+          if (!this.placing) return;
+          if (e.key === "Delete" || e.key === "Backspace") {
+            e.preventDefault();
+            e.stopPropagation();
+            this.deleteCustomLabel(label.id);
+          } else if (e.key.startsWith("Arrow")) {
+            e.preventDefault();
+            e.stopPropagation();
+            const p = this.map.map.latLngToContainerPoint(marker.getLatLng());
+            p.x += e.key === "ArrowRight" ? 5 : e.key === "ArrowLeft" ? -5 : 0;
+            p.y += e.key === "ArrowDown" ? 5 : e.key === "ArrowUp" ? -5 : 0;
+            const ll = this.map.map.containerPointToLatLng(p);
+            this.change((s) => {
+              const l = s.annotations.custom.find((l) => l.id === label.id);
+              l.lat = ll.lat;
+              l.lng = ll.lng;
+            });
+          }
+        };
+        this.customMarkers.set(label.id, marker);
+      }
+      marker.setLatLng([label.lat, label.lng]);
+      const element = marker.getElement();
+      if (element.dataset.text !== label.text) {
+        element.innerHTML = `<div class="custom-label-content">${escape(label.text)}</div>`;
+        element.dataset.text = label.text;
+      }
+      element.dataset.customLabelId = label.id;
+      element.tabIndex = this.placing ? 0 : -1;
+      element.setAttribute(
+        "aria-label",
+        `Custom label: ${label.text}; arrows move, Delete removes`,
+      );
+      element.style.pointerEvents = this.placing ? "auto" : "none";
+      if (this.placing) marker.dragging.enable();
+      else marker.dragging.disable();
+    }
+    if (!document.activeElement?.matches("#custom-label-list input"))
+      el("custom-label-list").innerHTML =
+        labels
+          .map(
+            (l) =>
+              `<div class="custom-label-row"><input type="text" maxlength="200" data-custom-id="${escape(l.id)}" value="${escape(l.text)}" aria-label="Text for custom label ${escape(l.text)}"><button class="btn btn-secondary" data-delete-label="${escape(l.id)}">Delete</button></div>`,
+          )
+          .join("") || '<p class="export-hint">No custom labels yet.</p>';
   }
   renderLegend() {
     const s = this.getState(),

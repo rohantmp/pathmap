@@ -26,6 +26,9 @@ const options = process.env.PATHMAP_CHROMIUM
     const page = await context.newPage();
     attach(page);
     await page.goto(url);
+    await page.click("#open-examples");
+    await snap(page, "examples-menu");
+    await page.click("#examples-close");
     await page.setInputFiles(
       "#upload-zone-input",
       path.join(root, "tests/fixtures/winding.gpx"),
@@ -40,6 +43,14 @@ const options = process.env.PATHMAP_CHROMIUM
     await page.click("#place-labels");
     await page.click('[data-tab="labels"]');
     await page.selectOption("#legend-placement", "map");
+    await page.click("#new-label-tool");
+    await page.fill("#new-label-text", "Access gate");
+    await page.click("#add-custom-label");
+    const mapBounds = await page.locator("#map").boundingBox();
+    await page.mouse.click(
+      mapBounds.x + mapBounds.width * 0.75,
+      mapBounds.y + mapBounds.height * 0.7,
+    );
     await snap(page, "placement");
     await page.click("#editor-export");
     await page.fill("#export-title", "Orchard boundary · Kanchipuram");
@@ -132,6 +143,7 @@ const options = process.env.PATHMAP_CHROMIUM
     );
     if (errors.length) throw Error(errors.join("\n"));
     const images = [
+      "examples-menu",
       "boundary-draft",
       "path-following",
       "placement",
