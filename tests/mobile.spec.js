@@ -38,7 +38,8 @@ test('example session and PDF export from a phone', async ({ page }, testInfo) =
   page.on('dialog', async (d) => { dialogs.push(d.message()); await d.accept(); });
   await openApp(page);
   await page.tap('#mobile-menu-toggle');
-  await page.locator('.empty-state button').tap();
+  await page.tap('#open-examples');
+  await page.tap('[data-example-id="farm"]');
   await expect(page.locator('.polygon-card')).toHaveCount(6);
   await expect(page.locator('#sidebar')).not.toHaveClass(/active/);
   expect(await polygonsOnMap(page)).toBe(6);
@@ -62,7 +63,8 @@ test('touch vertex editing: drag, long-press delete, midpoint tap', async ({ pag
   page.on('dialog', (d) => d.accept());
   await openApp(page);
   await page.tap('#mobile-menu-toggle');
-  await page.locator('.empty-state button').tap();
+  await page.tap('#open-examples');
+  await page.tap('[data-example-id="farm"]');
   await expect(page.locator('.polygon-card')).toHaveCount(6);
   await openDrawer(page);
   await openSettings(page, 'edit');

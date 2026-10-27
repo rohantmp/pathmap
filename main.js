@@ -105,7 +105,6 @@ function init() {
         document.getElementById('session-file-input').click();
     });
     document.getElementById('session-file-input').addEventListener('change', handleUploadSession);
-    document.getElementById('load-example-session').addEventListener('click', () => loadExampleSession());
     setupExampleMenu();
     // Editor installs the polygon selection and draft controls.
 
@@ -838,8 +837,7 @@ function renderPolygonList() {
         container.innerHTML = `
             <div class="empty-state">
                 <p>No polygons yet. Drop GPX files above to get started.</p>
-                <button type="button" class="btn btn-secondary" onclick="window.loadExampleSession()">Load example session</button>
-                <small>Six farm plots near Kanchipuram with tracks, groups and export text.</small>
+                <p>Use <strong>Example sessions</strong> above to explore guided map editing cases.</p>
             </div>`;
         return;
     }

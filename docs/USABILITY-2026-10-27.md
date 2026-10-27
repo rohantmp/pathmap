@@ -20,7 +20,7 @@ The operator's stored browser session was not used.
 
 ## Verification
 
-15 unit tests and 37 desktop/mobile browser tests pass on the final v2 build.
+15 unit tests and 38 desktop/mobile browser tests pass on the final v2 build.
 New checks exercise rich formatting, numbered/bullet lists, literal text/HTML-safe
 paste, text undo/redo, keyboard tabs, notes saved through export and reload,
 track-only visibility/persistence/segment breaks, handle-key lifecycle, upload/help
@@ -32,3 +32,5 @@ review-artifacts/index.html is the gallery. These show the implementation, not
 simulated geometry. Baseline screenshots remain in review-artifacts/usability/.
 Real iOS/Android keyboards, Safari editing commands and physical printing remain
 manual checks. No dependencies changed and nothing was merged or published.
+
+The legacy one-click farm loader has also been removed from the empty state and Session tab. Both now direct users to the single Example sessions menu. Regression coverage confirms the menu lists all nine examples and loads the farm session on desktop and mobile.

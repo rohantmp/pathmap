@@ -498,7 +498,8 @@ test("editing labels starts from the visible spread layout and keeps untouched l
   page,
 }) => {
   await openApp(page);
-  await page.locator(".empty-state button").click();
+  await page.click("#open-examples");
+  await page.click('[data-example-id=farm]');
   await page.waitForFunction(
     () => {
       const value = [...document.querySelectorAll(".vertex-label")]
@@ -614,7 +615,7 @@ test("notes without polygons are protected by example replacement confirmation a
   const r = await page.locator("#map").boundingBox();
   await page.mouse.click(r.x + 150, r.y + 350);
   await page.click("#open-examples");
-  await page.click('[data-example-id="farm"]');
+  await page.click('[data-example-id=farm]');
   expect(asked).toBe(1);
   expect((await storedSession(page)).polygons).toHaveLength(0);
   await expect(page.locator(".custom-label-content")).toHaveText(
@@ -815,4 +816,13 @@ test("loaded sessions prioritize editing while upload and example help remain av
   await page.locator(".polygon-name").first().fill("Updated orchard");
   await page.locator(".polygon-name").first().press("Tab");
   await expect(page.locator("#upload-section")).toBeVisible();
+});
+
+test("empty state directs people to the complete example sessions menu", async ({page}) => {
+  await openApp(page);
+  await expect(page.locator(".empty-state button")).toHaveCount(0);
+  await expect(page.locator(".empty-state")).toContainText("Example sessions");
+  await page.click("#open-examples");
+  await expect(page.locator("[data-example-id]")).toHaveCount(9);
+  await expect(page.locator("[data-example-id=farm]")).toBeVisible();
 });

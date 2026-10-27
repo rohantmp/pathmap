@@ -31,7 +31,7 @@ No merge, push or deployment was performed. No new dependencies or lockfile chan
 - `npm run build`: production build passed.
 - `V1_REF=865f292 npm run build:dual`: passed for the initial implementation;
   local checkout lacks the `v1` tag, so its documented release commit was used.
-- Final rebuilt v2: **37 desktop/mobile browser tests passed**, including the
+- Final rebuilt v2: **38 desktop/mobile browser tests passed**, including the
   example menu, exact label-position preservation, custom-label lifecycle, rich
   notes authoring/preview/export, GPX-only persistence and touch usability.
 - Existing root-route suite and focused follow-up checks also passed after the
@@ -82,8 +82,11 @@ clearer Apply/Cancel language. Export now defaults to visual notes authoring wit
 live preview and always-available page preview/download controls. GPX-only view
 and the north compass label are included. See [the walkthrough](USABILITY-2026-10-27.md).
 
-The final v2 production build passed all 37 browser tests plus 15 units. Root-route
+The final v2 production build passed all 38 browser tests plus 15 units. Root-route
 checks passed before the final touch fix; the focused phone regression then passed.
 The notes formatting adapter uses native browser editing commands to retain text
 undo; these are isolated in notes-editor.js and tested in Chromium. Safari remains
 part of the real-device manual check.
+
+
+The previous separate farm-example buttons have been removed from the empty state and Session tab. Example sessions now load through the single nine-case menu, with mobile and desktop coverage for the menu route.

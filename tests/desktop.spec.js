@@ -168,7 +168,9 @@ test.describe('Example session and storage', () => {
     const dialogs = [];
     page.on('dialog', async (d) => { dialogs.push(d.message()); await d.accept(); });
     await openApp(page);
-    await page.click('.empty-state button');
+    await expect(page.locator('#load-example-session')).toHaveCount(0);
+    await page.click('#open-examples');
+    await page.click('[data-example-id="farm"]');
     await expect(page.locator('.polygon-card')).toHaveCount(6);
     await expect(page.locator('.group-card')).toHaveCount(2);
     expect(dialogs).toHaveLength(0);
@@ -180,7 +182,11 @@ test.describe('Example session and storage', () => {
     expect(session.polygons.some((p) => /[஀-௿]/.test(p.name))).toBe(true);
 
     await openSettingsTab(page, 'session');
-    await page.click('#load-example-session');
+    await page.click('#browse-examples');
+    await expect(page.locator('#examples-modal')).toBeVisible();
+    await page.click('[data-example-id="winding"]');
+    expect(dialogs).toHaveLength(1);
+    expect(dialogs[0]).toMatch(/replaces your current session/);
     expect(dialogs).toHaveLength(1);
     expect(dialogs[0]).toMatch(/replaces your current session/);
 
