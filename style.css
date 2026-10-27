@@ -1863,3 +1863,209 @@ body {
         pointer-events: none;
     }
 }
+
+.vertex-help {
+    position:absolute;
+    z-index:800;
+    bottom:55px;
+    left:12px;
+    display:grid;
+    gap:7px;
+    padding:12px 14px;
+    background:#fffffff2;
+    border:1px solid #cbd8e2;
+    border-radius:7px;
+    font:12px/1.5 system-ui;
+    color:#2c3e50;
+    pointer-events:none
+}
+.vertex-help[hidden] {
+    display:none
+}
+.vertex-help span {
+    display:flex;
+    gap:8px;
+    align-items:center
+}
+.vertex-help i {
+    display:inline-block;
+    width:13px;
+    height:13px;
+    border:2px solid white;
+    border-radius:50%;
+    box-shadow:0 0 0 1px #69808f;
+    flex-shrink:0
+}
+.handle-key-boundary {
+    background:var(--vertex-color,#ff6b6b)
+}
+.handle-key-midpoint {
+    background:#3498db
+}
+@media(max-width:768px) {
+    .vertex-help {
+        font-size:10px;
+        padding:8px;
+        max-width:calc(100% - 24px);
+        bottom:50px
+    }
+}
+
+
+.notes-mode,.notes-toolbar {
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    align-items:center
+}
+.notes-mode {
+    margin:8px 0
+}
+.notes-mode button,.notes-toolbar button,.notes-toolbar select {
+    font:inherit;
+    border:1px solid #cbd8e2;
+    border-radius:5px;
+    background:#f4f8fb;
+    color:#2c3e50;
+    padding:7px 10px;
+    cursor:pointer
+}
+.notes-mode [aria-selected=true],.notes-toolbar [aria-pressed=true] {
+    background:#deefff;
+    border-color:#247fc0
+}
+.notes-toolbar {
+    padding:8px;
+    border:1px solid #ccd7df;
+    border-bottom:0;
+    border-radius:6px 6px 0 0;
+    font-size:12px
+}
+.notes-toolbar label {
+    display:flex;
+    gap:5px;
+    align-items:center
+}
+.notes-rich {
+    min-height:160px;
+    max-height:340px;
+    overflow-y:auto;
+    border:1px solid #ccd7df;
+    border-radius:0 0 6px 6px;
+    padding:14px;
+    font:15px/1.5 system-ui;
+    background:#fff;
+    color:#1f2a33
+}
+.notes-rich:focus {
+    outline:2px solid #247fc0;
+    outline-offset:1px
+}
+.notes-rich:empty:before {
+    content:attr(data-placeholder);
+    color:#7c8d99;
+    pointer-events:none
+}
+.notes-rich p,.notes-preview p {
+    margin:0 0 8px
+}
+.notes-rich ul,.notes-rich ol,.notes-preview ul,.notes-preview ol,.export-block .export-notes ol {
+    padding-left:22px;
+    margin:0 0 8px
+}
+.notes-rich h2,.notes-preview h2 {
+    font-size:20px;
+    margin:14px 0 6px
+}
+.notes-rich h3,.notes-preview h3 {
+    font-size:17px;
+    margin:12px 0 4px
+}
+.notes-rich h4,.notes-preview h4 {
+    font-size:15px;
+    margin:10px 0 4px
+}
+.notes-preview-section {
+    margin-top:16px
+}
+.notes-preview-section>strong {
+    display:block;
+    font-size:12px;
+    color:#597285;
+    margin-bottom:6px
+}
+.notes-preview {
+    border:1px solid #d6e1e8;
+    border-radius:6px;
+    background:#fff;
+    padding:20px;
+    font:15px/1.5 system-ui;
+    color:#1f2a33
+}
+.notes-preview h1 {
+    font-size:28px;
+    line-height:1.25;
+    margin:0 0 10px
+}
+#notes-source-panel[hidden],#notes-write-panel[hidden] {
+    display:none
+}
+#notes-source-panel textarea {
+    width:100%;
+    min-height:160px;
+    font:14px/1.5 monospace;
+    padding:12px
+}
+@media(max-width:768px) {
+    .notes-mode button,.notes-toolbar button,.notes-toolbar select {
+        min-height:44px
+    }
+    .notes-rich {
+        font-size:16px
+    }
+    .notes-preview {
+        padding:14px
+    }
+    #notes-source-panel textarea {
+        font-size:16px
+    }
+}
+
+
+/* Keep the session and map in view while editing. */
+.session-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+.session-actions .examples-menu-button { flex: 1; width: auto; margin: 0; }
+.session-actions #create-group { flex-shrink: 0; }
+.example-guide summary { font-size: 13px; font-weight: 600; cursor: pointer; line-height: 1.6; }
+.sidebar-header, .upload-section-wrapper { flex-shrink: 0; }
+.settings-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.settings-tabs .tab-button { min-width: 0; padding: 12px 4px; }
+#export-modal .modal-footer { background: #fff; flex-shrink: 0; }
+.btn:focus-visible, summary:focus-visible, .tab-button:focus-visible {
+    outline: 3px solid #247fc0; outline-offset: 3px;
+}
+@media (max-width: 768px) {
+    .boundary-draft #editor-toolbar #editor-edit,
+    .boundary-draft #editor-toolbar #place-labels,
+    .boundary-draft #editor-toolbar #new-label-tool,
+    .boundary-draft #editor-toolbar #editor-export { display: none; }
+    .boundary-draft #draft-map-actions { margin-left: auto; }
+    .boundary-draft #editor-status { order: 3; }
+    #editor-toolbar { right: 58px; }
+
+    #export-modal .modal-footer { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+    #export-modal .modal-status { grid-column: 1 / -1; }
+    #export-modal .modal-status:empty { display: none; }
+    #export-modal .modal-footer .btn { min-height: 44px; }
+    .session-actions .btn, .example-guide summary { min-height: 44px; }
+    .example-guide summary { display: list-item; align-content: center; }
+}
+
+.notes-rich, .notes-preview, .export-notes { overflow-wrap: anywhere; }
+
+/* Long area names stay readable on a phone; avoid duplicate hover cards while editing. */
+.polygon-name-content { max-width: 260px; white-space: normal; overflow-wrap: anywhere; }
+.boundary-draft .area-tooltip { display: none; }
+@media (max-width: 768px) {
+    .polygon-name-content { max-width: 180px; }
+}

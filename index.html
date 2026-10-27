@@ -89,15 +89,14 @@
                         </div>
                         <input type="file" id="upload-zone-input" accept=".gpx" multiple style="display: none;">
                     </div>
-                    <button id="create-group" class="btn btn-secondary" style="width: 100%;">+ Group</button>
                 </div>
             </div>
 
             <div class="controls">
-                <button type="button" id="open-examples" class="btn btn-secondary examples-menu-button">Example sessions</button>
-                <section id="example-guide" class="example-guide" hidden aria-label="Example walkthrough">
-                    <strong id="example-guide-title"></strong><p id="example-guide-hint"></p><button type="button" id="example-try" class="btn btn-secondary btn-small">Try boundary editing</button>
-                </section>
+                <div class="session-actions"><button type="button" id="open-examples" class="btn btn-secondary examples-menu-button">Example sessions</button><button id="create-group" class="btn btn-secondary">+ Group</button></div>
+                <details id="example-guide" class="example-guide" hidden open aria-label="Example walkthrough">
+                    <summary id="example-guide-title"></summary><p id="example-guide-hint"></p><button type="button" id="example-try" class="btn btn-secondary btn-small">Try boundary editing</button>
+                </details>
                 <!-- Settings row with Clear All -->
                 <div class="settings-row">
                     <button id="toggle-settings-panel" class="settings-header">
@@ -131,6 +130,8 @@
                                 <input type="checkbox" id="toggle-tracks">
                                 <span>Show GPX Tracks</span>
                             </label>
+                            <label class="toggle-control"><input type="checkbox" id="tracks-only"><span>GPX tracks only</span></label>
+                            <p class="export-hint">Tracks-only view hides areas, labels and the key. Hidden/focused layers still apply.</p>
                             <label class="toggle-control">
                                 <input type="checkbox" id="toggle-group-bounds">
                                 <span>Show Group Boundaries</span>
@@ -287,15 +288,16 @@
             </div>
             <form class="modal-body" id="export-form">
                 <section class="modal-section">
-                    <h3>Front matter</h3>
+                    <h3>Title and notes</h3>
                     <label class="field">
                         <span>Title</span>
                         <input type="text" id="export-title" placeholder="e.g. Survey of plots, October 2026" autocomplete="off">
                     </label>
-                    <label class="field">
-                        <span>Notes</span>
-                        <textarea id="export-notes" rows="6" placeholder="Caption, description, references…&#10;&#10;Blank line = new paragraph. **bold**, *italic*, lines starting with - become bullets, # Heading."></textarea>
-                    </label>
+                    <div class="field notes-field">
+                        <span id="export-notes-label">Notes</span>
+                        <textarea id="export-notes" rows="6" aria-label="Markdown source" hidden></textarea>
+                        <div id="notes-editor"></div>
+                    </div>
                     <div class="field-row">
                         <label class="field">
                             <span>Text placement</span>
@@ -340,12 +342,12 @@
                 <section class="export-section">
                     <label class="field"><span>Output appearance</span><select id="export-appearance"><option value="color">Color</option><option value="grayscale">Grayscale + distinct marks</option></select></label>
                     <p class="export-hint">The complete page uses this appearance. Labels and map key keep their positions; color editing is preserved. Current viewport resolution is used.</p>
-                    <button type="button" id="export-preview-button" class="btn btn-secondary">Preview final page</button>
                     <div id="export-preview-wrap" class="export-preview-wrap" hidden><img id="export-preview-image" alt="Final export page preview"></div>
                 </section>
             </form>
             <div class="modal-footer">
                 <span class="modal-status" id="export-status"></span>
+                <button type="button" id="export-preview-button" class="btn btn-secondary">Preview page</button>
                 <button type="button" class="btn btn-secondary" id="export-cancel">Cancel</button>
                 <button type="button" class="btn btn-secondary" id="export-run-png">Export PNG</button>
                 <button type="button" class="btn btn-primary" id="export-run-pdf">Export PDF</button>

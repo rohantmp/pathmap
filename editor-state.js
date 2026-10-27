@@ -33,6 +33,8 @@ export function migrateSession(input) {
   state.layout ||= { legend: { onMap: false, x: 0.95, y: 0.95 } };
   state.layout.legend ||= { onMap: false, x: 0.95, y: 0.95 };
   state.noOverlap ||= false;
+  state.tracksOnly ??= false;
+  state.showTracks ??= false;
   state.nextPolygonId ||= 1 + Math.max(0, ...state.polygons.map((p) => p.id));
   state.nextGroupId ||= 1 + Math.max(0, ...state.groups.map((g) => g.id));
   state.focusedPolygonId ??= null;

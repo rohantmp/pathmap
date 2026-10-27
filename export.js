@@ -1,3 +1,5 @@
+import { markdownLite } from './notes-format.js';
+export { markdownLite } from './notes-format.js';
 import domtoimage from "dom-to-image-more";
 import { jsPDF } from "jspdf";
 
@@ -298,73 +300,6 @@ export function buildLegendHtml(rows, appearance = "color") {
     )
     .join("");
   return `<table class="export-legend"><tbody>${body}</tbody></table>`;
-}
-
-/**
- * Convert a markdown subset to HTML. Input is escaped first, so the only tags that
- * come out are the ones generated here.
- */
-export function markdownLite(text) {
-    const lines = escapeHtml(text).split(/\r?\n/);
-    let html = '';
-    let paragraph = [];
-    let inList = false;
-
-    const flushParagraph = () => {
-        if (paragraph.length) {
-            html += `<p>${paragraph.join('<br>')}</p>`;
-            paragraph = [];
-        }
-    };
-    const closeList = () => {
-        if (inList) {
-            html += '</ul>';
-            inList = false;
-        }
-    };
-
-    for (const rawLine of lines) {
-        const line = rawLine.trim();
-        if (!line) {
-            flushParagraph();
-            closeList();
-            continue;
-        }
-
-        const heading = line.match(/^(#{1,3})\s+(.*)$/);
-        if (heading) {
-            flushParagraph();
-            closeList();
-            const level = heading[1].length + 1; // # -> h2 (h1 is the title)
-            html += `<h${level}>${inlineMarkdown(heading[2])}</h${level}>`;
-            continue;
-        }
-
-        const bullet = line.match(/^[-*•]\s+(.*)$/);
-        if (bullet) {
-            flushParagraph();
-            if (!inList) {
-                html += '<ul>';
-                inList = true;
-            }
-            html += `<li>${inlineMarkdown(bullet[1])}</li>`;
-            continue;
-        }
-
-        closeList();
-        paragraph.push(inlineMarkdown(line));
-    }
-
-    flushParagraph();
-    closeList();
-    return html;
-}
-
-function inlineMarkdown(text) {
-    return text
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
-        .replace(/__(.+?)__/g, '<u>$1</u>');
 }
 
 function slugify(text) {

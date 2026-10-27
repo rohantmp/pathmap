@@ -27,12 +27,13 @@ No merge, push or deployment was performed. No new dependencies or lockfile chan
 
 ## Validation
 
-- `npm run test:unit`: **14 geometry/state/example unit tests passed**.
+- `npm run test:unit`: **15 geometry/state/example/notes unit tests passed**.
 - `npm run build`: production build passed.
 - `V1_REF=865f292 npm run build:dual`: passed for the initial implementation;
   local checkout lacks the `v1` tag, so its documented release commit was used.
-- Final rebuilt v2: **31 desktop/mobile browser tests passed**, including the
-  example menu, exact label-position preservation and custom-label lifecycle.
+- Final rebuilt v2: **37 desktop/mobile browser tests passed**, including the
+  example menu, exact label-position preservation, custom-label lifecycle, rich
+  notes authoring/preview/export, GPX-only persistence and touch usability.
 - Existing root-route suite and focused follow-up checks also passed after the
   phone drawer placement fix.
 - `git diff --check`: clean.
@@ -70,3 +71,19 @@ currently spread label layout on entering **Edit labels and key**, and supports
 arbitrary text notes with placement, rename/delete, undo and saved sessions.
 See the editor guide for walkthroughs. The local preview runs as a detached
 loopback process, so it is independent of an interactive tool session.
+
+
+## Usability and visual pass
+
+The desktop and phone walkthrough led to a compact phone editing toolbar, a fix
+for compass interception of Cancel, visible Settings tabs, collapsible upload and
+example help, an accessible Shared boundaries shortcut, handle-color key and
+clearer Apply/Cancel language. Export now defaults to visual notes authoring with
+live preview and always-available page preview/download controls. GPX-only view
+and the north compass label are included. See [the walkthrough](USABILITY-2026-10-27.md).
+
+The final v2 production build passed all 37 browser tests plus 15 units. Root-route
+checks passed before the final touch fix; the focused phone regression then passed.
+The notes formatting adapter uses native browser editing commands to retain text
+undo; these are isolated in notes-editor.js and tested in Chromium. Safari remains
+part of the real-device manual check.

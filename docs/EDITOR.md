@@ -8,7 +8,10 @@ source tracks and session controls remain available.
 ## Editing boundaries
 
 Click an area/name on the map, use its **Edit boundary** card button, or select it
-under Settings → Edit. Solid handles move vertices; hollow midpoint handles add
+under Settings → Edit. The **Shared boundaries** shortcut opens the joining and
+no-overlap controls. A map key explains handle colors: filled area-color handles
+move vertices, blue midpoints insert them. The compass includes a visible N.
+Solid handles move vertices; hollow midpoint handles add
 one. Right-click/long-press or the Delete selected button removes a vertex. A
 focused handle supports arrow-key nudging (Shift uses a larger step). Escape or
 pointer cancellation restores the position at the start of a drag.
@@ -146,6 +149,39 @@ plot. Regeneration cannot silently break shared topology. A shared edge remains
 shared when the overlap toggle is switched off; disabling the toggle does not
 silently detach ownership.
 
+## GPX tracks only
+
+Under Settings → Display, **GPX tracks only** hides polygon fills/outlines,
+group outlines, coordinate/name/custom labels and the map key. Visible plots'
+original GPX segments remain, without invented lines across segment breaks.
+Hidden/focused plots retain their visibility rules. This view survives reload and
+session files; switching it off restores the areas and annotations. Starting
+boundary or label editing returns to area view. **Show GPX tracks** independently
+controls whether tracks also appear alongside polygons.
+
+## Writing export notes
+
+In Export map → **Title and notes**, Write is the default editing mode. Select
+text and use headings, bold, italic, underline, bullet/numbered lists, clear style
+and text undo/redo. **How it will appear** previews the title and notes using the
+same safe prose renderer as PNG/PDF. The optional **Markdown source** tab retains
+existing session compatibility. Tabs support arrow-key navigation; pasting inserts
+plain text so copied HTML cannot execute. Notes remain lightweight prose: arbitrary
+HTML, links, images and advanced nested lists are not authoring controls.
+
+**Preview page** stays in the export footer alongside Cancel and downloads. It
+previews the complete composition, including map, labels/key and grayscale.
+Preview/download saves export preferences with the session, as before.
+
+## Interface layout
+
+Once a session contains areas/groups, Add Polygons folds to make room for editing;
+open it again to upload more GPX files. + Group and Example sessions remain
+accessible. Each example has collapsible guidance; Try collapses it while opening
+the relevant controls. All five Settings tabs fit the sidebar. On phones, boundary
+editing prioritizes undo/redo, Apply/Cancel and status above the map; Apply or Cancel
+returns the other tools. The toolbar leaves room for the compass and touch targets.
+
 ## Persistence and implementation
 
 Schema 2 adds boundary parameters/source references, stable graph node IDs,
@@ -164,6 +200,7 @@ and Save can download the in-memory committed survey.
 - `example-sessions.js`: isolated synthetic fixtures and guided edge-case metadata.
 - `map-manager.js` / `label-manager.js`: Leaflet handles and stable anchored labels.
 - `export.js`: shared page renderer, monochrome marks and downloads.
+- `notes-editor.js` / `notes-format.js`: visual authoring, safe prose serialization and shared preview rendering.
 
 No new runtime dependencies or lockfile changes.
 

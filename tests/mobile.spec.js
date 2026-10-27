@@ -131,3 +131,33 @@ test("phone example menu and custom label placement close the drawer to reveal t
     "Gate · phone",
   );
 });
+
+test('phone editing leaves map room and notes formatting has reachable preview actions', async ({page}) => {
+  await openApp(page);
+  await openDrawer(page);
+  await page.tap('#open-examples');
+  await page.tap('[data-example-id="winding"]');
+  await openDrawer(page);
+  await page.tap('#example-try');
+  const toolbar = await page.locator('#editor-toolbar').boundingBox();
+  expect(toolbar.height).toBeLessThan(155);
+  await expect(page.locator('#map-draft-apply')).toBeVisible();
+  await expect(page.locator('#vertex-help')).toBeVisible();
+  expect((await page.locator('.polygon-name-content').first().boundingBox()).width).toBeLessThanOrEqual(180);
+  await expect(page.locator('.area-tooltip')).toBeHidden();
+  await page.tap('#map-draft-cancel');
+  await page.tap('#editor-export');
+  await page.locator('#export-notes-rich').fill('Phone survey notes');
+  await page.locator('#export-notes-rich').evaluate(el => {
+    const range=document.createRange();range.selectNodeContents(el);
+    const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+  });
+  await page.getByRole('button',{name:'Bold',exact:true}).tap();
+  await expect(page.locator('#notes-preview strong')).toHaveText('Phone survey notes');
+  const preview = await page.locator('#export-preview-button').boundingBox();
+  const height=await page.evaluate(()=>innerHeight);
+  expect(preview.y + preview.height).toBeLessThanOrEqual(height);
+  await page.tap('#export-preview-button');
+  await expect(page.locator('#export-preview-image')).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+});

@@ -29,8 +29,8 @@ export class Editor {
     this.placing = false;
     this.previewLayers = [];
     el("edit-tab").innerHTML =
-      `<p class="export-hint">Select a polygon on the map or below. Changes stay in a draft until Apply.</p><select id="polygon-select" class="polygon-select" aria-label="Polygon to edit"></select>
-        <div class="editor-draft-tools"><div class="editor-row"><button id="draft-apply" class="btn btn-primary">Apply boundary</button><button id="exit-edit-mode" class="btn btn-secondary">Cancel draft</button></div>
+      `<p class="export-hint">Select a polygon on the map or below. Apply saves these changes; Cancel restores the previous map.</p><select id="polygon-select" class="polygon-select" aria-label="Polygon to edit"></select>
+        <div class="editor-draft-tools"><div class="editor-row"><button id="draft-apply" class="btn btn-primary">Apply boundary</button><button id="exit-edit-mode" class="btn btn-secondary">Cancel draft</button><button id="jump-shared" class="btn btn-secondary">Shared boundaries</button></div>
         <p id="draft-info" role="status"></p><div class="editor-row"><button id="vertex-delete" class="btn btn-secondary">Delete selected</button><button id="vertex-pin" class="btn btn-secondary">Pin vertex</button></div>
         <p class="export-hint">Drag solid handles; tap hollow midpoints to add. Select a handle then use arrows to nudge. Delete removes it; Escape cancels the current drag.</p>
         <details open><summary>Follow actual path</summary><label class="toggle-control"><input id="follow-path" type="checkbox">Follow actual path</label><label for="path-tolerance">Maximum deviation (metres)</label><input id="path-tolerance" type="number" min="0" max="1000" step="0.5" value="0"><p class="export-hint">Smaller values keep more bends. Zero keeps every distinct source point. Pinned vertices survive detail reduction.</p>
@@ -38,11 +38,19 @@ export class Editor {
         <div class="editor-row"><label>First source point (index)<input id="source-start" type="number" min="0" value="0"></label><label>Last source point (index)<input id="source-end" type="number" min="1" value="1"></label></div>
         <label class="toggle-control"><input id="review-gaps" type="checkbox">I reviewed and accept the connecting edges across gaps</label><button id="path-preview" class="btn btn-secondary">Preview boundary</button>
         <p class="export-hint">Or replace just one boundary section with the selected source segment:</p><div class="editor-row"><label>From vertex<input id="replace-from" type="number" min="1" value="1"></label><label>To vertex<input id="replace-to" type="number" min="1" value="2"></label></div><div class="editor-row"><button id="section-start" class="btn btn-secondary">Start at selected vertex</button><button id="section-end" class="btn btn-secondary">End at selected vertex</button></div><button id="path-local" class="btn btn-secondary">Follow selected section</button></details>
-        <details><summary>Shared boundaries · no overlap</summary><label class="toggle-control"><input id="no-overlap" type="checkbox">Prevent polygon overlap</label><p class="export-hint">Shared handles reshape both owners. Unjoined polygons stop at contact. Hidden polygons also constrain edits.</p><select id="join-neighbor" aria-label="Neighbor polygon"></select><button id="join-edge" class="btn btn-secondary">Join matching edges (within 1 m)</button><p class="export-hint">Align edge endpoints first. Joining previews all affected polygons; no automatic cascading pushes.</p><label class="toggle-control"><input id="polygon-locked" type="checkbox">Lock selected polygon after Apply</label></details></div>`;
+        <details id="shared-boundary-tools"><summary>Shared boundaries · no overlap</summary><label class="toggle-control"><input id="no-overlap" type="checkbox">Prevent polygon overlap</label><p class="export-hint">Shared handles reshape both owners. Unjoined polygons stop at contact. Hidden polygons also constrain edits.</p><select id="join-neighbor" aria-label="Neighbor polygon"></select><button id="join-edge" class="btn btn-secondary">Join matching edges (within 1 m)</button><p class="export-hint">Align edge endpoints first. Joining previews all affected polygons; no automatic cascading pushes.</p><label class="toggle-control"><input id="polygon-locked" type="checkbox">Lock selected polygon after Apply</label></details></div>`;
     const bar = document.createElement("div");
     bar.id = "editor-toolbar";
     bar.innerHTML = `<button id="editor-undo" class="btn btn-secondary" title="Undo (Ctrl+Z)">↶ Undo</button><button id="editor-redo" class="btn btn-secondary" title="Redo (Ctrl+Shift+Z)">↷ Redo</button><button id="editor-edit" class="btn btn-secondary">Edit boundary</button><button id="place-labels" class="btn btn-secondary" aria-pressed="false">Edit labels and key</button><button id="new-label-tool" class="btn btn-secondary">Add label</button><button id="editor-export" class="btn btn-secondary">Export preview</button><span id="editor-status" role="status" aria-live="polite">Select a polygon to edit</span><div id="draft-map-actions" hidden><button id="map-draft-apply" class="btn btn-primary">Apply</button><button id="map-draft-cancel" class="btn btn-secondary">Cancel</button></div>`;
     document.querySelector(".map-container").append(bar);
+    const handleKey = document.createElement("div");
+    handleKey.id = "vertex-help";
+    handleKey.className = "vertex-help";
+    handleKey.hidden = true;
+    handleKey.setAttribute("aria-label", "Vertex handle key");
+    handleKey.innerHTML =
+      '<strong>Editing handles</strong><span><i class="handle-key-boundary"></i>Boundary vertex · drag to move</span><span><i class="handle-key-midpoint"></i>Blue midpoint · click or tap to add a vertex</span>';
+    document.querySelector(".map-container").append(handleKey);
     const settings = document.createElement("div");
     settings.className = "editor-label-options";
     settings.innerHTML = `<label for="legend-placement">Map key</label><select id="legend-placement"><option value="below">Below map in exports</option><option value="map">On map · drag to place</option></select><button id="reset-placement" class="btn btn-secondary">Reset pinned labels & key</button>`;
@@ -127,6 +135,10 @@ export class Editor {
       else this.cancel();
     };
     el("exit-edit-mode").onclick = () => this.cancel();
+    el("jump-shared").onclick = () => {
+      el("shared-boundary-tools").open = true;
+      el("shared-boundary-tools").scrollIntoView({ block: "nearest" });
+    };
     el("draft-apply").onclick = () => this.apply();
     el("map-draft-apply").onclick = () => this.apply();
     el("map-draft-cancel").onclick = () => this.cancel();
@@ -327,6 +339,7 @@ export class Editor {
     return true;
   }
   select(id) {
+    this.ensureAreasView();
     if (this.draft && this.selected === id) return;
     if (!this.leaveDraft()) return;
     const p = this.getState().polygons.find((p) => p.id === id);
@@ -357,7 +370,7 @@ export class Editor {
     this.map.map.fitBounds(L.latLngBounds(p.hull.map((v) => [v.lat, v.lon])), {
       padding: [50, 50],
     });
-    this.status(`Editing ${p.name} · draft; committed geometry is unchanged.`);
+    this.status(`Editing ${p.name} · Apply to save or Cancel to discard.`);
     this.update();
     window.pathmapCloseSidebar?.();
   }
@@ -787,6 +800,12 @@ export class Editor {
   update() {
     const s = this.draft || this.getState();
     el("draft-map-actions").hidden = !this.draft;
+    el("vertex-help").hidden = !this.draft;
+    if (this.draft)
+      el("vertex-help").style.setProperty(
+        "--vertex-color",
+        this.active().color,
+      );
     document.querySelector(".editor-draft-tools").hidden = !this.draft;
     document.body.classList.toggle("boundary-draft", !!this.draft);
     document
@@ -848,7 +867,16 @@ export class Editor {
       .querySelector(".map-container")
       .classList.toggle("adding-custom-label", !!this.pendingCustomText);
   }
+  ensureAreasView() {
+    if (!this.getState().tracksOnly) return;
+    const state = clone(this.getState());
+    state.tracksOnly = false;
+    this.replace(state);
+    this.save();
+    this.render();
+  }
   setLabelEditing(enabled) {
+    if (enabled) this.ensureAreasView();
     this.placing = enabled;
     this.map.labelManager.setPlacementMode(enabled);
     if (!enabled) this.pendingCustomText = null;
@@ -947,6 +975,7 @@ export class Editor {
         element.dataset.text = label.text;
       }
       element.dataset.customLabelId = label.id;
+      element.style.display = this.getState().tracksOnly ? "none" : "";
       element.tabIndex = this.placing ? 0 : -1;
       element.setAttribute(
         "aria-label",
@@ -969,7 +998,8 @@ export class Editor {
     const s = this.getState(),
       l = s.layout.legend,
       polygons = s.polygons.filter((p) => this.map.polygonData.has(p.id));
-    this.legend.hidden = !l.onMap || !polygons.length;
+    this.legend.hidden =
+      this.getState().tracksOnly || !l.onMap || !polygons.length;
     this.legend.innerHTML =
       '<strong>Map key <span aria-hidden="true">⠿</span></strong>' +
       polygons

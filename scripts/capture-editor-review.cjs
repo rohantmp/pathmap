@@ -17,7 +17,7 @@ const options = process.env.PATHMAP_CHROMIUM
     page.on("dialog", (d) => d.accept());
   };
   const snap = (page, name) =>
-    page.screenshot({ path: path.join(output, name + ".png") });
+    page.screenshot({ path: path.join(output, name + ".png"), animations: "disabled" });
   try {
     const context = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
@@ -34,7 +34,7 @@ const options = process.env.PATHMAP_CHROMIUM
       path.join(root, "tests/fixtures/winding.gpx"),
     );
     await page.waitForSelector(".polygon-card");
-    await page.click("#toggle-upload-section");
+    if (await page.locator("#upload-section").isVisible()) await page.click("#toggle-upload-section");
     await page.locator(".edit-polygon").first().click();
     await snap(page, "boundary-draft");
     await page.check("#follow-path");
@@ -54,6 +54,8 @@ const options = process.env.PATHMAP_CHROMIUM
     await snap(page, "placement");
     await page.click("#editor-export");
     await page.fill("#export-title", "Orchard boundary · Kanchipuram");
+    await page.locator("#export-notes-rich").fill("Survey overview\nFollow the orchard bend. Keep the access gate clear.");
+    await snap(page, "notes-editor");
     await page.selectOption("#export-appearance", "grayscale");
     await page.click("#export-preview-button");
     await page.locator("#export-preview-image").waitFor({ state: "visible" });
@@ -101,7 +103,7 @@ const options = process.env.PATHMAP_CHROMIUM
     const second = await shared.newPage();
     attach(second);
     await second.goto(url);
-    await second.click("#toggle-upload-section");
+    if (await second.locator("#upload-section").isVisible()) await second.click("#toggle-upload-section");
     await second.locator(".edit-polygon").first().click();
     await second
       .locator("summary")
@@ -113,6 +115,13 @@ const options = process.env.PATHMAP_CHROMIUM
     await handle.focus();
     for (let i = 0; i < 3; i++) await handle.press("Shift+ArrowRight");
     await snap(second, "shared-edge-push");
+    await second.click("#map-draft-cancel");
+    await second.click("#open-examples");
+    await second.click('[data-example-id="disconnected"]');
+    if (!await second.locator("#settings-container").isVisible()) await second.click("#toggle-settings-panel");
+    await second.click('[data-tab="display"]');
+    await second.check("#tracks-only");
+    await snap(second,"tracks-only");
     await shared.close();
 
     const mobile = await browser.newContext({ ...devices["iPhone 13"] });
@@ -127,6 +136,10 @@ const options = process.env.PATHMAP_CHROMIUM
     await phone.click("#mobile-menu-toggle");
     await phone.locator(".edit-polygon").first().click();
     await snap(phone, "mobile-editor");
+    await phone.click("#map-draft-cancel");
+    await phone.click("#editor-export");
+    await phone.locator("#export-notes-rich").fill("Survey notes for the orchard");
+    await snap(phone,"mobile-notes");
     await mobile.close();
     fs.writeFileSync(
       path.join(output, "validation.json"),
@@ -147,9 +160,12 @@ const options = process.env.PATHMAP_CHROMIUM
       "boundary-draft",
       "path-following",
       "placement",
+      "notes-editor",
+      "tracks-only",
       "shared-edge-push",
       "grayscale-page",
       "mobile-editor",
+      "mobile-notes",
     ];
     fs.writeFileSync(
       path.join(output, "index.html"),

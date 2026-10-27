@@ -371,3 +371,20 @@ test("custom labels migrate, validate and survive annotation cleanup without any
     }),
   );
 });
+import { markdownLite } from "../../notes-format.js";
+test("formatted notes safely render headings, inline styles, numbered/bullet lists and literal escapes", () => {
+  const result = markdownLite(
+    "# குறிப்புகள்\n\n**bold** *italic* __underlined__ ***both***\n\n- First\n- Second\n\n1. One\n2. Two",
+  );
+  assert.match(result, /<h2>குறிப்புகள்<\/h2>/);
+  assert.match(result, /<strong>bold<\/strong>/);
+  assert.match(result, /<em>italic<\/em>/);
+  assert.match(result, /<u>underlined<\/u>/);
+  assert.match(result, /<strong><em>both<\/em><\/strong>/);
+  assert.match(result, /<ul><li>First<\/li><li>Second<\/li><\/ul>/);
+  assert.match(result, /<ol><li>One<\/li><li>Two<\/li><\/ol>/);
+  assert.equal(markdownLite("\\*literal\\*"), "<p>*literal*</p>");
+  assert.equal(markdownLite("C:\\plots"), "<p>C:\\plots</p>");
+  assert.ok(!markdownLite("<img src=x onerror=alert(1)>").includes("<img"));
+  assert.match(markdownLite("<script>bad()<\/script>"), /&lt;script&gt;/);
+});

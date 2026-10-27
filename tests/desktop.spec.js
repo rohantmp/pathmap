@@ -75,6 +75,7 @@ test.describe('Export', () => {
     await expect(page.locator('#export-rename-list .export-rename-row')).toHaveCount(2);
 
     await page.fill('#export-title', 'Survey of plots – test');
+    await page.click('#notes-source-tab');
     await page.fill('#export-notes', '# Context\nSurveyed in **October 2026**.\n\n- Plot A\n- Plot B');
     await page.locator('#export-rename-list .export-rename-row input').first().fill('Export Name One');
 

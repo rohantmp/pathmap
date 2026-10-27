@@ -1,4 +1,5 @@
 import 'leaflet/dist/leaflet.css';
+import { NotesEditor } from './notes-editor.js';
 import { Editor } from './editor.js';
 import { migrateSession, cleanAnnotations } from './editor-state.js';
 import { clone } from './geometry.js';
@@ -23,7 +24,10 @@ let state = {
 
 let mapManager;
 let editor;
+let notesEditor;
 let storageRecovery = false;
+let uploadFoldedForData = false;
+let currentExampleGuideId;
 
 // Color palette for auto-assigning colors
 const COLOR_PALETTE = [
@@ -89,6 +93,7 @@ function init() {
     document.getElementById('create-group').addEventListener('click', createGroup);
     document.getElementById('upload-zone-input').addEventListener('change', handleUploadZoneChange);
     document.getElementById('toggle-tracks').addEventListener('change', handleToggleTracks);
+    document.getElementById('tracks-only').addEventListener('change', handleTracksOnly);
     document.getElementById('toggle-group-bounds').addEventListener('change', handleToggleGroupBounds);
     document.getElementById('toggle-labels').addEventListener('change', handleToggleLabels);
     document.getElementById('toggle-area').addEventListener('change', handleToggleArea);
@@ -113,6 +118,7 @@ function init() {
             const isOpen = uploadSection.style.display !== 'none';
             uploadSection.style.display = isOpen ? 'none' : 'block';
             uploadToggle.classList.toggle('active', !isOpen);
+            uploadToggle.setAttribute('aria-expanded', String(!isOpen));
         });
     }
 
@@ -573,6 +579,10 @@ function isPolygonVisible(polygon) {
 }
 
 function updateMapVisibility() {
+    mapManager.setShowTracks(!!state.tracksOnly || !!state.showTracks);
+    document.getElementById('toggle-tracks').checked=!!state.tracksOnly||!!state.showTracks;
+    document.getElementById('toggle-tracks').disabled=!!state.tracksOnly;
+    document.getElementById('tracks-only').checked=!!state.tracksOnly;
     state.polygons.forEach(polygon => updatePolygonOnMap(polygon, true));
     mapManager.refreshAllLabels();
     renderGroupBoundaries();
@@ -704,6 +714,12 @@ function updatePolygonHull(polygon) {
 }
 
 function updatePolygonOnMap(polygon, skipFitBounds = false) {
+    if(state.tracksOnly){
+        mapManager.removePolygon(polygon.id);
+        if(isPolygonVisible(polygon))mapManager.addTracks(polygon.id,polygon.tracks,polygon.color);
+        if(!skipFitBounds)mapManager.fitBounds();
+        return;
+    }
     if (polygon.hull && polygon.hull.length >= 3 && isPolygonVisible(polygon)) {
         mapManager.addPolygon(polygon.id, polygon.hull, polygon.color, polygon.name, skipFitBounds);
 
@@ -716,9 +732,16 @@ function updatePolygonOnMap(polygon, skipFitBounds = false) {
 }
 
 function handleToggleTracks(event) {
-    mapManager.setShowTracks(event.target.checked);
-    // Re-sync every polygon so tracks only appear for polygons that are actually shown
+    state.showTracks=event.target.checked;
     updateMapVisibility();
+    saveState();
+}
+function handleTracksOnly(event){
+    if(editor?.draft&&!editor.leaveDraft()){event.target.checked=!!state.tracksOnly;return;}
+    state.tracksOnly=event.target.checked;
+    if(state.tracksOnly)editor?.setLabelEditing(false);
+    updateMapVisibility();
+    saveState();
 }
 
 function handleToggleGroupBounds(event) {
@@ -731,7 +754,7 @@ function renderGroupBoundaries() {
     // Clear existing group boundaries
     mapManager.clearGroupBoundaries();
 
-    if (!mapManager.showGroupBounds) return;
+    if (!mapManager.showGroupBounds || state.tracksOnly) return;
 
     // For each group, compute convex hull of all polygon hulls
     state.groups.forEach(group => {
@@ -799,6 +822,15 @@ function handleAreaUnitChange(event) {
 }
 
 function renderPolygonList() {
+    const hasData = state.polygons.length > 0 || state.groups.length > 0;
+    if (!hasData || !uploadFoldedForData) {
+        const open = !hasData;
+        document.getElementById('upload-section').style.display = open ? 'block' : 'none';
+        const toggle = document.getElementById('toggle-upload-section');
+        toggle.classList.toggle('active', open);
+        toggle.setAttribute('aria-expanded', String(open));
+        uploadFoldedForData = hasData;
+    }
     renderExampleGuide();
     const container = document.getElementById('polygons-list');
 
@@ -1300,6 +1332,7 @@ function setupExampleMenu() {
     document.getElementById('example-cards').onclick=e=>{const button=e.target.closest('[data-example-id]');if(button)loadExampleSession(button.dataset.exampleId);};
     document.getElementById('example-try').onclick=()=>{
         const example=EXAMPLE_CATALOG.find(e=>e.id===state.exampleId);if(!example)return;
+        document.getElementById('example-guide').open=false;
         if(example.action==='export'){if(editor.leaveDraft())openExportDialog('png');}
         else if(example.action==='labels'){if(editor.leaveDraft()){editor.setLabelEditing(true);editor.openLabels();}}
         else {editor.select(example.target);if(example.vertex!==undefined){mapManager.onVertexSelect?.(example.vertex);mapManager.vertexMarkers[example.vertex]?.getElement()?.focus({preventScroll:true});}}
@@ -1317,7 +1350,9 @@ function setupExampleMenu() {
 function renderExampleGuide() {
     const guide=document.getElementById('example-guide');
     const example=EXAMPLE_CATALOG.find(e=>e.id===state.exampleId);
-    guide.hidden=!example;if(!example)return;
+    guide.hidden=!example;
+    if(currentExampleGuideId!==state.exampleId){guide.open=true;currentExampleGuideId=state.exampleId;}
+    if(!example)return;
     document.getElementById('example-guide-title').textContent=example.title;
     document.getElementById('example-guide-hint').textContent=example.hint;
     document.getElementById('example-try').textContent=example.action==='export'?'Open grayscale export':example.action==='labels'?'Edit labels and key':'Try boundary editing';
@@ -1353,6 +1388,7 @@ function setupExportDialog() {
             closeExportDialog();
         }
     });
+    notesEditor=new NotesEditor(document.getElementById('export-notes'),document.getElementById('notes-editor'),document.getElementById('export-title'));
     document.getElementById('export-form').addEventListener('submit', (event) => event.preventDefault());
     document.getElementById('export-run-png').addEventListener('click', () => runCompositeExport('png'));
     document.getElementById('export-run-pdf').addEventListener('click', () => runCompositeExport('pdf'));
@@ -1369,12 +1405,16 @@ function setupExportDialog() {
 function applyExportPrefs(prefs) {
     if (!prefs || typeof prefs !== 'object') return;
     if (typeof prefs.title === 'string') document.getElementById('export-title').value = prefs.title;
-    if (typeof prefs.notes === 'string') document.getElementById('export-notes').value = prefs.notes;
+    if (typeof prefs.notes === 'string') {
+        if(notesEditor)notesEditor.setMarkdown(prefs.notes);
+        else document.getElementById('export-notes').value=prefs.notes;
+    }
     if (prefs.placement) document.getElementById('export-placement').value = prefs.placement;
     if (typeof prefs.legend === 'boolean') document.getElementById('export-legend').checked = prefs.legend;
     if (prefs.pageSize) document.getElementById('export-page-size').value = prefs.pageSize;
     if (prefs.orientation) document.getElementById('export-orientation').value = prefs.orientation;
     if (prefs.appearance) document.getElementById('export-appearance').value = prefs.appearance;
+    notesEditor?.renderPreview();
 }
 
 /**

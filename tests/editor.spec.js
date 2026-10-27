@@ -630,3 +630,189 @@ test("notes without polygons are protected by example replacement confirmation a
     "Unattached note",
   );
 });
+const selectNotes = async (page, selector = "#export-notes-rich") =>
+  page.locator(selector).evaluate((element) => {
+    element.focus();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+test("visual notes controls and live preview format prose without typing Markdown", async ({
+  page,
+}, info) => {
+  await openApp(page);
+  await uploadGpx(page, ["winding.gpx"]);
+  await page.click("#editor-export");
+  await expect(page.locator("#export-notes-rich")).toBeVisible();
+  await expect(page.locator("#export-notes")).toBeHidden();
+  await page.fill("#export-title", "Survey notes");
+  await page.locator("#export-notes-rich").fill("Survey overview");
+  await selectNotes(page);
+  await page.selectOption("#notes-block", "h2");
+  await expect(page.locator("#export-notes-rich h2")).toHaveText(
+    "Survey overview",
+  );
+  await expect(page.locator("#notes-preview h2")).toHaveText("Survey overview");
+  await selectNotes(page);
+  await page.selectOption("#notes-block", "p");
+  await selectNotes(page);
+  await page.getByRole("button", { name: "Bold", exact: true }).click();
+  await expect(page.locator("#notes-preview strong")).toHaveText(
+    "Survey overview",
+  );
+  await page.getByRole("button", { name: "Italic", exact: true }).click();
+  await expect(page.locator("#notes-preview em")).toHaveText("Survey overview");
+  await page.getByRole("button", { name: "Underline", exact: true }).click();
+  await expect(page.locator("#notes-preview u")).toHaveText("Survey overview");
+  await page.locator("#export-notes-rich").fill("First item\nSecond item");
+  await selectNotes(page);
+  await page.getByRole("button",{name:"Clear text formatting",exact:true}).click();
+  await selectNotes(page);
+  await page.getByRole("button", { name: "Bullet list", exact: true }).click();
+  await expect(page.locator("#notes-preview li")).toHaveCount(2);
+  await page
+    .getByRole("button", { name: "Numbered list", exact: true })
+    .click();
+  await expect(page.locator("#notes-preview ol li")).toHaveCount(2);
+  const source = await page.locator("#export-notes").inputValue();
+  expect(source).toContain("1. First item");
+  await page.click("#export-preview-button");
+  await expect(page.locator("#export-preview-image")).toBeVisible();
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.click("#export-run-pdf"),
+  ]);
+  const saved = await saveDownload(download, info.outputPath("rich-notes"));
+  expect(saved.bytes.subarray(0, 4).toString()).toBe("%PDF");
+  expect((await storedSession(page)).exportPrefs.notes).toBe(source);
+  await page.reload();
+  await page.click("#editor-export");
+  await expect(page.locator("#export-notes-rich ol li")).toHaveCount(2);
+});
+test("rich notes preserve literal symbols, safe paste, source editing and text undo", async ({
+  page,
+}) => {
+  await openApp(page);
+  await page.click("#editor-export");
+  await page
+    .locator("#export-notes-rich")
+    .fill("Use *literal* symbols <b>safely</b>");
+  await expect(page.locator("#notes-preview")).toContainText(
+    "Use *literal* symbols <b>safely</b>",
+  );
+  await expect(page.locator("#notes-preview b")).toHaveCount(0);
+  await page.click("#notes-source-tab");
+  await expect(page.locator("#export-notes")).toBeVisible();
+  await page.fill("#export-notes", "# Heading\n\n**அளவை**\n\n1. One\n2. Two");
+  await expect(page.locator("#notes-preview h2")).toHaveText("Heading");
+  await page.click("#notes-write-tab");
+  await expect(page.locator("#export-notes-rich strong")).toHaveText("அளவை");
+  await page.locator("#notes-write-tab").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator("#notes-source-tab")).toBeFocused();
+  await expect(page.locator("#export-notes")).toBeVisible();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.locator("#notes-write-tab")).toBeFocused();
+  await page.locator("#export-notes-rich").evaluate((element) => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", "<img src=x onerror=alert(1)>");
+    clipboardData.setData("text/html", "<img src=x onerror=alert(1)>");
+    element.focus();
+    element.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  await expect(page.locator("#export-notes-rich img")).toHaveCount(0);
+  await expect(page.locator("#notes-preview img")).toHaveCount(0);
+  await page.locator("#export-notes-rich").press("End");
+  await page.keyboard.insertText(" undo-me");
+  await expect(page.locator("#notes-preview")).toContainText("undo-me");
+  await page.getByRole("button", {name:"Undo text edit",exact:true}).click();
+  await expect(page.locator("#notes-preview")).not.toContainText("undo-me");
+  await page.getByRole("button", {name:"Redo text edit",exact:true}).click();
+  await expect(page.locator("#notes-preview")).toContainText("undo-me");
+  await expect(page.locator("#notes-preview")).toContainText(
+    "<img src=x onerror=alert(1)>",
+  );
+});
+test("track-only view hides areas and annotations, preserves segment breaks and survives reload", async ({
+  page,
+}) => {
+  page.on("dialog", (d) => d.accept());
+  await openApp(page);
+  await page.click("#open-examples");
+  await page.click('[data-example-id="labels"]');
+  await openSettingsTab(page, "display");
+  await page.check("#tracks-only");
+  await expect(page.locator("path.gpx-track")).not.toHaveCount(0);
+  await expect(page.locator("path.boundary-polygon")).toHaveCount(0);
+  await expect(page.locator(".polygon-name-label")).toHaveCount(0);
+  await expect(page.locator("#map-key")).toBeHidden();
+  await expect(page.locator(".custom-map-label")).toBeHidden();
+  expect((await storedSession(page)).tracksOnly).toBe(true);
+  await page.reload();
+  await expect(page.locator("path.boundary-polygon")).toHaveCount(0);
+  await expect(page.locator("path.gpx-track")).not.toHaveCount(0);
+  await page
+    .locator(".polygon-card .polygon-actions .btn-icon")
+    .first()
+    .click();
+  expect((await storedSession(page)).polygons[0].hidden).toBe(true);
+  await openSettingsTab(page, "display");
+  await page.uncheck("#tracks-only");
+  await expect(page.locator("path.boundary-polygon")).toHaveCount(5);
+  await page.click("#open-examples");
+  await page.click('[data-example-id="disconnected"]');
+  await openSettingsTab(page, "display");
+  await page.check("#tracks-only");
+  await expect(page.locator("path.gpx-track")).toHaveCount(2);
+});
+test("the compass north letter is visible and the handle key explains the current area color and blue midpoints", async ({
+  page,
+}) => {
+  await openApp(page);
+  const north = page.locator(".compass-rose text");
+  await expect(north).toHaveText("N");
+  expect(+(await north.getAttribute("font-size"))).toBeGreaterThanOrEqual(18);
+  expect(+(await north.getAttribute("y"))).toBeGreaterThanOrEqual(20);
+  await uploadGpx(page, ["winding.gpx"]);
+  await selectFirst(page);
+  await expect(page.locator("#vertex-help")).toBeVisible();
+  await expect(page.locator("#vertex-help")).toContainText("Boundary vertex");
+  await expect(page.locator("#vertex-help")).toContainText("Blue midpoint");
+  await page.click("#jump-shared");
+  await expect(page.locator("#shared-boundary-tools")).toHaveAttribute(
+    "open",
+    "",
+  );
+  await page.click("#map-draft-cancel");
+  await expect(page.locator("#vertex-help")).toBeHidden();
+});
+
+test("loaded sessions prioritize editing while upload and example help remain available", async ({page}) => {
+  await openApp(page);
+  await expect(page.locator("#upload-section")).toBeVisible();
+  await page.click("#open-examples");
+  await page.click('[data-example-id="winding"]');
+  await expect(page.locator("#upload-section")).toBeHidden();
+  await expect(page.locator("#create-group")).toBeVisible();
+  await expect(page.locator("#example-guide-hint")).toBeVisible();
+  await page.click("#example-try");
+  await expect(page.locator("#example-guide-hint")).toBeHidden();
+  await expect(page.locator("#follow-path")).toBeVisible();
+  await page.click("#map-draft-cancel");
+  await page.click("#example-guide-title");
+  await expect(page.locator("#example-guide-hint")).toBeVisible();
+  await page.click("#toggle-upload-section");
+  await expect(page.locator("#upload-section")).toBeVisible();
+  await page.locator(".polygon-name").first().fill("Updated orchard");
+  await page.locator(".polygon-name").first().press("Tab");
+  await expect(page.locator("#upload-section")).toBeVisible();
+});

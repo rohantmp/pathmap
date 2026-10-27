@@ -60,13 +60,13 @@ export class MapManager {
             onAdd: function() {
                 const container = L.DomUtil.create('div', 'compass-rose');
                 container.innerHTML = `
-                    <svg width="50" height="50" viewBox="0 0 100 100">
+                    <svg width="50" height="50" viewBox="0 0 100 100" role="img" aria-label="Compass, north is up">
                         <circle cx="50" cy="50" r="45" fill="rgba(255,255,255,0.9)" stroke="#333" stroke-width="2"/>
-                        <polygon points="50,10 45,40 50,35 55,40" fill="#e74c3c"/>
+                        <polygon points="50,28 44,44 50,39 56,44" fill="#e74c3c"/>
                         <polygon points="50,90 45,60 50,65 55,60" fill="#333"/>
                         <polygon points="10,50 40,45 35,50 40,55" fill="#333"/>
                         <polygon points="90,50 60,45 65,50 60,55" fill="#333"/>
-                        <text x="50" y="8" text-anchor="middle" font-size="10" font-weight="bold" fill="#e74c3c">N</text>
+                        <text x="50" y="22" text-anchor="middle" font-size="20" font-weight="bold" fill="#b51f22">N</text>
                     </svg>
                 `;
                 return container;
@@ -192,11 +192,12 @@ export class MapManager {
 
         const trackLayers = [];
 
-        tracks.forEach(track => {
+        tracks.flatMap(track => (track.segments || [track.points]).map(points => ({points}))).forEach(track => {
             if (track.points && track.points.length > 0) {
                 const latLngs = track.points.map(p => [p.lat, p.lon]);
 
                 const polyline = L.polyline(latLngs, {
+                    className: 'gpx-track',
                     color: color,
                     weight: 2,
                     opacity: 0.6,
@@ -384,7 +385,7 @@ export class MapManager {
      * Fit map bounds to show all polygons
      */
     fitBounds() {
-        if (this.polygonLayers.size === 0) {
+        if (this.polygonLayers.size === 0 && this.trackLayers.size === 0) {
             this.map.setView([22.5, 78.5], 5);  // Default to India view
             return;
         }
@@ -403,6 +404,8 @@ export class MapManager {
                 }
             });
         });
+
+        this.trackLayers.forEach(layers => layers.forEach(layer => { bounds.extend(layer.getBounds()); hasPoints=true; }));
 
         if (hasPoints) {
             this.map.fitBounds(bounds, { padding: [50, 50] });
