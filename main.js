@@ -1324,7 +1324,6 @@ function closeExampleMenu() {
 }
 function setupExampleMenu() {
     document.getElementById('open-examples').onclick=openExampleMenu;
-    document.getElementById('browse-examples').onclick=openExampleMenu;
     document.getElementById('examples-close').onclick=closeExampleMenu;
     document.getElementById('examples-modal').onclick=e=>{if(e.target===e.currentTarget)closeExampleMenu();};
     document.getElementById('example-cards').onclick=e=>{const button=e.target.closest('[data-example-id]');if(button)loadExampleSession(button.dataset.exampleId);};

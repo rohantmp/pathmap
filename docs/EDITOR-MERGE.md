@@ -89,4 +89,4 @@ undo; these are isolated in notes-editor.js and tested in Chromium. Safari remai
 part of the real-device manual check.
 
 
-The previous separate farm-example buttons have been removed from the empty state and Session tab. Example sessions now load through the single nine-case menu, with mobile and desktop coverage for the menu route.
+The previous farm-example shortcuts have been removed, and the duplicate Example sessions button has been removed from Session settings. The single menu above Settings remains the route to all nine examples.

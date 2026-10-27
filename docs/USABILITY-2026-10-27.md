@@ -34,3 +34,5 @@ Real iOS/Android keyboards, Safari editing commands and physical printing remain
 manual checks. No dependencies changed and nothing was merged or published.
 
 The legacy one-click farm loader has also been removed from the empty state and Session tab. Both now direct users to the single Example sessions menu. Regression coverage confirms the menu lists all nine examples and loads the farm session on desktop and mobile.
+
+Follow-up: removed the duplicate Example sessions button from Session settings. The primary menu above Settings remains the single entry point.

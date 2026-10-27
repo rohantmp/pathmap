@@ -182,7 +182,8 @@ test.describe('Example session and storage', () => {
     expect(session.polygons.some((p) => /[஀-௿]/.test(p.name))).toBe(true);
 
     await openSettingsTab(page, 'session');
-    await page.click('#browse-examples');
+    await expect(page.locator('#browse-examples')).toHaveCount(0);
+    await page.click('#open-examples');
     await expect(page.locator('#examples-modal')).toBeVisible();
     await page.click('[data-example-id="winding"]');
     expect(dialogs).toHaveLength(1);

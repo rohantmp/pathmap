@@ -176,8 +176,8 @@ Preview/download saves export preferences with the session, as before.
 ## Interface layout
 
 Once a session contains areas/groups, Add Polygons folds to make room for editing;
-open it again to upload more GPX files. + Group and Example sessions remain
-accessible. Each example has collapsible guidance; Try collapses it while opening
+open it again to upload more GPX files. + Group and the single Example sessions
+menu remain accessible above Settings. Each example has collapsible guidance; Try collapses it while opening
 the relevant controls. All five Settings tabs fit the sidebar. On phones, boundary
 editing prioritizes undo/redo, Apply/Cancel and status above the map; Apply or Cancel
 returns the other tools. The toolbar leaves room for the compass and touch targets.
